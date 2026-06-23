@@ -1,0 +1,16 @@
+# PlutoClaw dependencies
+# Install: pip3 install -r requirements.txt
+
+# Core
+requests>=2.31.0
+pyyaml>=6.0
+uvicorn>=0.24.0
+fastapi>=0.104.0
+
+# Computer Vision
+opencv-python-headless>=4.8.0
+ultralytics>=8.0.0
+
+# Sensor (Pi only)
+RPi.GPIO>=0.7.1; platform_machine in "armv7l aarch64"
+adafruit-circuitpython-dht>=3.7.0; platform_machine in "armv7l aarch64"

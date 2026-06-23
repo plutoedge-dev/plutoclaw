@@ -1,0 +1,124 @@
+plutoclaw:
+  device_name: "PlutoClaw-Dev"
+  domain: farming             # farming | warehouse | home | general
+  usecase: farming            # farming | warehouse | home | general
+  environment: mac            # mac | pi (auto-detected if not set)
+
+pluto:
+  automation_enabled: false   # disable on Pi to avoid blocking chat (Pi CPU is slow)
+  automation_interval: 60     # check conditions every N seconds
+
+whatsapp:
+  enabled: true               # enable WA alerts
+  alert_numbers:
+    - "6288XXXXXXXXX"         # replace with your phone number (format: 628xxx)
+
+cameras:
+  - id: cam1
+    name: "Main Camera"
+    source: 0                 # 0 = Mac webcam, or "rtsp://..." for IP cam
+
+sensors:
+  - id: dht1
+    type: DHT22
+    pin: 4
+    name: "Main Enclosure Temperature"
+
+skills:
+  # --- WAREHOUSE ---
+  ppe_guard:
+    enabled: false
+    camera: cam1
+    cooldown_seconds: 30
+    confidence: 0.5
+
+  intrusion:
+    enabled: false
+    camera: cam1
+    active_hours: "20:00-06:00"
+    cooldown_seconds: 30
+    confidence: 0.5
+
+  forklift_guard:
+    enabled: false
+    camera: cam1
+    cooldown_seconds: 10
+    confidence: 0.5
+
+  # --- FARMING ---
+  sick_animal:
+    enabled: false
+    camera: cam1
+    cooldown_seconds: 120
+    confidence: 0.6
+
+  animal_count:
+    enabled: false
+    camera: cam1
+    interval_seconds: 60
+
+  coop_monitor:
+    enabled: true
+    sensor_name: "Garage - Plant Pot"
+    gpio_pin: 4             # DHT22 DATA → GPIO 4 (Pin 7)
+    soil_enabled: true      # enable soil moisture
+    soil_pin: 17            # Soil DO → GPIO 17 (Pin 11)
+    temp_max: 35.0          # °C — alert if temperature is above this
+    temp_min: 15.0          # °C — alert if temperature is below this
+    hum_max: 90.0           # % — alert if humidity is above this
+    hum_min: 30.0           # % — alert if humidity is below this
+    read_interval: 30       # read sensor every 30 seconds
+    cooldown_seconds: 300   # delay between alerts (5 minutes)
+
+actuators:
+  # --- RELAY ---
+  - id: relay1
+    type: relay
+    pin: 18                  # GPIO 18 (Pin 12)
+    name: "Ventilation Fan"
+    active_high: true        # HIGH = ON (most common relay module)
+    enabled: true
+
+  - id: relay2
+    type: relay
+    pin: 23                  # GPIO 23 (Pin 16)
+    name: "Water Pump"
+    active_high: true
+    enabled: true
+
+  # --- BUZZER ---
+  - id: buzzer1
+    type: buzzer
+    pin: 24                  # GPIO 24 (Pin 18)
+    name: "Alert Buzzer"
+    active_high: true
+    enabled: true
+
+  # --- LED ---
+  - id: led1
+    type: led
+    pin: 25                  # GPIO 25 (Pin 22)
+    name: "Status LED"
+    active_high: true
+    enabled: true
+
+llm:
+  enabled: true
+  provider: ollama            # ollama | openai | anthropic
+  model: "plutoedge"          # PlutoEdge-1.5B — IoT-tuned model (PlutoClaw native)
+  host: "http://localhost:11434"
+  language: "english"
+
+dashboard:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+  auth:
+    enabled: false        # true to enable dashboard login
+    username: "admin"
+    password: "pluto1234"
+
+storage:
+  db_path: "data/plutoclaw.db"
+  media_path: "media"
+  max_days: 30

@@ -1,0 +1,3456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlutoClaw — Edge AI</title>
+<style>
+:root {
+  --teal:       #00C8C8;
+  --teal-dim:   #00A0A0;
+  --teal-dark:  #007878;
+  --teal-glow:  rgba(0,200,200,0.15);
+  --teal-glow2: rgba(0,200,200,0.06);
+  --bg:         #111111;
+  --bg2:        #181818;
+  --bg3:        #1e1e1e;
+  --bg4:        #242424;
+  --border:     rgba(0,200,200,0.18);
+  --text:       #e8f4f4;
+  --text-dim:   #7aaaaa;
+  --text-muted: #3d6666;
+  --red:        #ff4d4d;
+  --green:      #00e676;
+  --yellow:     #ffd740;
+  --orange:     #ff9100;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh; display:flex; }
+
+/* ── Sidebar ─────────────────────────────────────────── */
+.sidebar {
+  width: 220px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  position: fixed; top:0; left:0; bottom:0; z-index:200;
+  transition: width 0.22s cubic-bezier(.4,0,.2,1);
+  overflow: hidden;
+}
+.sidebar.collapsed { width: 60px; }
+
+/* Mobile overlay */
+.sidebar-overlay {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
+  z-index:199; backdrop-filter:blur(2px);
+}
+.sidebar-overlay.visible { display:block; }
+
+.sidebar-logo {
+  padding: 14px 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display:flex; align-items:center; gap:10px;
+  min-height:56px; flex-shrink:0;
+  position:relative;
+}
+.sidebar-logo svg { width:30px; height:30px; flex-shrink:0; }
+.logo-text { font-size:1rem; font-weight:700; color:var(--teal); letter-spacing:0.5px; white-space:nowrap; transition:opacity 0.15s; }
+.logo-sub { font-size:0.62rem; color:var(--text-dim); margin-top:1px; white-space:nowrap; transition:opacity 0.15s; }
+.sidebar.collapsed .logo-text,
+.sidebar.collapsed .logo-sub { opacity:0; pointer-events:none; }
+
+/* Toggle button — fixed outside sidebar so it is not clipped */
+.sidebar-toggle {
+  position:fixed; top:16px;
+  left:209px; /* 220px - 11px */
+  width:22px; height:22px; border-radius:50%;
+  background:var(--bg3); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; z-index:300; color:var(--text-dim); font-size:0.6rem;
+  transition:left 0.22s cubic-bezier(.4,0,.2,1), background 0.15s, border-color 0.15s;
+  box-shadow:0 2px 8px rgba(0,0,0,0.4);
+}
+.sidebar-toggle:hover { background:var(--teal-glow); color:var(--teal); border-color:var(--teal); }
+.sidebar-toggle.sb-collapsed { left:49px; /* 60px - 11px */ }
+
+/* Mobile hamburger */
+.topbar-hamburger {
+  display:none; align-items:center; justify-content:center;
+  width:34px; height:34px; border-radius:7px; cursor:pointer;
+  background:transparent; border:1px solid var(--border);
+  color:var(--text-dim); font-size:1rem; margin-right:8px;
+  transition:all 0.15s; flex-shrink:0;
+}
+.topbar-hamburger:hover { background:var(--teal-glow2); color:var(--teal); }
+
+.nav { padding:10px 8px; flex:1; overflow-y:auto; overflow-x:hidden; }
+.nav-section {
+  font-size:0.6rem; color:var(--text-muted); letter-spacing:1.5px;
+  padding:8px 8px 4px; text-transform:uppercase; white-space:nowrap;
+  transition:opacity 0.15s;
+}
+.sidebar.collapsed .nav-section { opacity:0; }
+.nav-item {
+  display:flex; align-items:center; gap:10px;
+  padding:9px 12px; border-radius:7px; cursor:pointer;
+  font-size:0.82rem; color:var(--text-dim);
+  transition:all 0.15s; margin-bottom:2px;
+  white-space:nowrap; overflow:hidden;
+  position:relative;
+}
+.sidebar.collapsed .nav-item { padding:9px 0; justify-content:center; }
+.nav-item:hover { background:var(--teal-glow2); color:var(--text); }
+.nav-item.active { background:var(--teal-glow); color:var(--teal); border:1px solid var(--border); }
+.nav-item .icon { width:20px; min-width:20px; text-align:center; font-size:1rem; flex-shrink:0; }
+.nav-item .nav-label { transition:opacity 0.15s; white-space:nowrap; }
+.sidebar.collapsed .nav-item .nav-label { opacity:0; width:0; overflow:hidden; }
+.nav-badge {
+  margin-left:auto; background:var(--teal); color:#000;
+  font-size:0.6rem; font-weight:700; padding:1px 6px; border-radius:10px;
+  transition:opacity 0.15s; flex-shrink:0;
+}
+.sidebar.collapsed .nav-badge { opacity:0; width:0; overflow:hidden; padding:0; margin:0; }
+.nav-badge.red { background:var(--red); }
+
+/* Tooltip on hover saat collapsed */
+.sidebar.collapsed .nav-item::after {
+  content: attr(data-tooltip);
+  position:absolute; left:68px; top:50%; transform:translateY(-50%);
+  background:var(--bg3); border:1px solid var(--border);
+  color:var(--text); font-size:0.75rem; padding:5px 10px;
+  border-radius:6px; white-space:nowrap; pointer-events:none;
+  opacity:0; transition:opacity 0.15s; z-index:300;
+}
+.sidebar.collapsed .nav-item:hover::after { opacity:1; }
+
+.sidebar-footer {
+  padding:10px 14px; border-top:1px solid var(--border);
+  font-size:0.7rem; color:var(--text-muted); overflow:hidden;
+  transition:opacity 0.15s;
+}
+.sidebar.collapsed .sidebar-footer { opacity:0; height:0; padding:0; }
+.sys-status { display:flex; align-items:center; gap:6px; margin-bottom:4px; white-space:nowrap; }
+.dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.dot.green { background:var(--green); box-shadow:0 0 6px var(--green); }
+.dot.red { background:var(--red); }
+.dot.yellow { background:var(--yellow); }
+
+/* Status dots when sidebar is collapsed */
+.sidebar-dots-mini {
+  display:none; flex-direction:column; align-items:center;
+  gap:6px; padding:10px 0; border-top:1px solid var(--border);
+}
+.sidebar.collapsed .sidebar-dots-mini { display:flex; }
+.sidebar.collapsed .sidebar-footer-full { display:none; }
+
+/* ── Main ────────────────────────────────────────────── */
+.main {
+  margin-left:220px; flex:1; display:flex; flex-direction:column;
+  min-height:100vh; transition:margin-left 0.22s cubic-bezier(.4,0,.2,1);
+}
+.main.sidebar-collapsed { margin-left:60px; }
+
+.topbar {
+  height:52px; display:flex; align-items:center; justify-content:space-between;
+  padding:0 20px; background:var(--bg2);
+  border-bottom:1px solid var(--border); position:sticky; top:0; z-index:50;
+}
+.page-title { font-size:0.9rem; font-weight:600; color:var(--text); }
+.topbar-right { display:flex; align-items:center; gap:10px; }
+.time-chip {
+  font-size:0.75rem; color:var(--teal); background:var(--teal-glow2);
+  border:1px solid var(--border); padding:4px 10px; border-radius:20px;
+  font-variant-numeric:tabular-nums;
+}
+.device-chip { font-size:0.72rem; color:var(--text-dim); }
+
+.content { padding:16px 20px; flex:1; }
+
+/* ── Pages ───────────────────────────────────────────── */
+.page { display:none; }
+.page.active { display:block; }
+
+/* ── Cards ───────────────────────────────────────────── */
+.card {
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:10px; overflow:hidden;
+}
+.card-head {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:11px 16px; border-bottom:1px solid var(--border);
+  font-size:0.75rem; color:var(--teal); font-weight:600; letter-spacing:0.5px;
+}
+.card-head span { color:var(--text-muted); font-weight:400; font-size:0.7rem; }
+.card-body { padding:14px 16px; }
+
+/* ── Stat Cards ──────────────────────────────────────── */
+.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+.stat-card {
+  background:var(--bg2); border:1px solid var(--border); border-radius:10px;
+  padding:14px 16px; display:flex; flex-direction:row; align-items:center; gap:14px;
+  position:relative; overflow:hidden; transition:border-color 0.2s;
+}
+.stat-card:hover { border-color:var(--teal-dim); }
+.stat-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,var(--teal),transparent);
+}
+.stat-icon-box {
+  width:48px; height:48px; border-radius:12px;
+  background:var(--teal-glow); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.5rem; flex-shrink:0;
+  box-shadow: 0 0 12px rgba(0,200,200,0.08);
+}
+.stat-info { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.stat-label { font-size:0.62rem; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase; white-space:nowrap; }
+.stat-val { font-size:1.8rem; font-weight:700; color:var(--teal); line-height:1; }
+.stat-sub { font-size:0.67rem; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* legacy, no longer used */
+.stat-icon { display:none; }
+
+/* ── Grid layouts ────────────────────────────────────── */
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+.mt { margin-top:14px; }
+
+/* ── Camera feed ─────────────────────────────────────── */
+.cam-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; padding:12px; }
+.cam-item { background:var(--bg3); border-radius:8px; overflow:hidden; border:1px solid var(--border); }
+.cam-title { padding:6px 10px; font-size:0.7rem; color:var(--teal); display:flex; align-items:center; justify-content:space-between; }
+.cam-body { aspect-ratio:16/9; background:var(--bg); display:flex; align-items:center; justify-content:center; position:relative; }
+.cam-body img { width:100%; height:100%; object-fit:cover; }
+.cam-offline { color:var(--text-muted); font-size:0.75rem; text-align:center; }
+.live-badge { background:var(--red); color:#fff; font-size:0.6rem; font-weight:700; padding:2px 7px; border-radius:10px; animation:blink 1.5s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+/* ── Alert log ───────────────────────────────────────── */
+.alert-list { max-height:300px; overflow-y:auto; }
+.alert-item {
+  display:flex; gap:10px; padding:9px 14px;
+  border-bottom:1px solid rgba(0,200,200,0.06);
+  font-size:0.78rem;
+}
+.alert-item:last-child { border-bottom:none; }
+.alert-icon { font-size:1rem; flex-shrink:0; margin-top:1px; }
+.alert-body { flex:1; }
+.alert-msg { color:var(--text); line-height:1.4; }
+.alert-meta { color:var(--text-muted); font-size:0.67rem; margin-top:2px; }
+.alert-empty { color:var(--text-muted); text-align:center; padding:30px; font-size:0.8rem; }
+.alert-tag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:0.62rem; font-weight:700; margin-left:6px; }
+.alert-tag.ppe { background:rgba(255,215,64,0.15); color:var(--yellow); }
+.alert-tag.intrusion { background:rgba(255,77,77,0.15); color:var(--red); }
+.alert-tag.sick { background:rgba(160,100,255,0.15); color:#c084fc; }
+.alert-tag.sensor { background:rgba(0,230,118,0.15); color:var(--green); }
+
+/* ── Agent cards ─────────────────────────────────────── */
+.agent-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+.agent-card {
+  background:var(--bg2); border:1px solid var(--border); border-radius:10px;
+  overflow:hidden; transition:border-color 0.2s;
+}
+.agent-card:hover { border-color:var(--teal-dim); }
+.agent-card.on { border-color:rgba(0,200,200,0.4); }
+.agent-head { padding:12px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border); }
+.agent-icon { width:36px; height:36px; border-radius:8px; background:var(--teal-glow); display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+.agent-name { font-size:0.85rem; font-weight:600; color:var(--text); }
+.agent-seg { font-size:0.68rem; color:var(--text-dim); }
+.agent-toggle { margin-left:auto; }
+.toggle { position:relative; width:38px; height:20px; cursor:pointer; }
+.toggle input { opacity:0; width:0; height:0; }
+.toggle-slider {
+  position:absolute; inset:0; background:var(--bg4); border-radius:20px; transition:0.2s;
+  border:1px solid var(--border);
+}
+.toggle-slider::before {
+  content:''; position:absolute; width:14px; height:14px; border-radius:50%;
+  background:var(--text-muted); top:2px; left:2px; transition:0.2s;
+}
+.toggle input:checked + .toggle-slider { background:var(--teal-dark); border-color:var(--teal); }
+.toggle input:checked + .toggle-slider::before { background:var(--teal); transform:translateX(18px); box-shadow:0 0 6px var(--teal); }
+.agent-body { padding:12px 14px; }
+.agent-stats { display:flex; gap:14px; margin-bottom:10px; }
+.agent-stat { font-size:0.7rem; color:var(--text-dim); }
+.agent-stat strong { color:var(--teal); display:block; font-size:0.95rem; }
+.agent-wa { display:flex; align-items:center; gap:6px; font-size:0.7rem; color:var(--text-muted); padding-top:8px; border-top:1px solid var(--border); }
+.wa-connected { color:var(--green); }
+.wa-disconnected { color:var(--text-muted); }
+
+/* ── Pluto AI Chat ───────────────────────────────────── */
+.pluto-chat-wrap {
+  background:var(--bg2); border:1px solid var(--border); border-radius:12px;
+  overflow:hidden; margin-bottom:16px;
+}
+.pluto-chat-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px; border-bottom:1px solid var(--border);
+  cursor:pointer; user-select:none;
+}
+.pluto-chat-header-left { display:flex; align-items:center; gap:10px; }
+.pluto-avatar {
+  width:36px; height:36px; border-radius:50%;
+  background:linear-gradient(135deg,var(--teal),var(--teal-dark));
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.1rem; flex-shrink:0;
+  box-shadow:0 0 12px rgba(0,200,200,0.3);
+}
+.pluto-name { font-size:0.88rem; font-weight:700; color:var(--teal); }
+.pluto-subtitle { font-size:0.68rem; color:var(--text-dim); margin-top:1px; }
+.pluto-online { display:flex; align-items:center; gap:5px; font-size:0.68rem; color:var(--green); }
+.pluto-toggle-icon { color:var(--text-muted); font-size:0.8rem; transition:transform 0.2s; }
+.pluto-toggle-icon.open { transform:rotate(180deg); }
+
+.pluto-messages {
+  max-height:320px; overflow-y:auto; padding:14px 16px;
+  display:flex; flex-direction:column; gap:10px;
+  background:var(--bg);
+}
+.msg-row { display:flex; gap:8px; align-items:flex-end; }
+.msg-row.user { flex-direction:row-reverse; }
+.msg-bubble {
+  max-width:78%; padding:10px 14px; border-radius:12px;
+  font-size:0.79rem; line-height:1.5; white-space:pre-wrap;
+}
+.msg-bubble.pluto {
+  background:var(--bg3); border:1px solid var(--border);
+  color:var(--text); border-bottom-left-radius:3px;
+}
+.msg-bubble.user {
+  background:var(--teal-dark); color:#fff;
+  border-bottom-right-radius:3px; border:1px solid var(--teal);
+}
+.msg-avatar { width:28px; height:28px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:0.8rem; }
+.msg-avatar.pluto { background:var(--teal-glow); border:1px solid var(--border); }
+.msg-avatar.user { background:var(--bg4); border:1px solid var(--border); }
+.msg-typing { display:flex; align-items:center; gap:4px; padding:12px 14px; }
+.typing-dot { width:6px; height:6px; border-radius:50%; background:var(--teal); animation:typingPulse 1.2s infinite; }
+.typing-dot:nth-child(2) { animation-delay:0.2s; }
+.typing-dot:nth-child(3) { animation-delay:0.4s; }
+@keyframes typingPulse { 0%,60%,100%{opacity:0.2;transform:scale(0.8)} 30%{opacity:1;transform:scale(1)} }
+
+.pluto-input-row {
+  display:flex; gap:8px; padding:12px 14px;
+  border-top:1px solid var(--border); background:var(--bg2);
+}
+.pluto-input {
+  flex:1; background:var(--bg3); border:1px solid var(--border);
+  border-radius:8px; padding:8px 12px; color:var(--text); font-size:0.79rem;
+  outline:none; resize:none; min-height:36px; max-height:100px; font-family:inherit;
+}
+.pluto-input:focus { border-color:var(--teal); }
+.pluto-send-btn {
+  width:36px; height:36px; border-radius:8px; background:var(--teal);
+  border:none; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  font-size:1rem; flex-shrink:0; transition:background 0.15s;
+}
+.pluto-send-btn:hover { background:var(--teal-dim); }
+.pluto-send-btn:disabled { background:var(--bg4); cursor:not-allowed; }
+
+.pluto-chips {
+  display:flex; gap:6px; flex-wrap:wrap;
+  padding:0 14px 12px; background:var(--bg2);
+}
+.pluto-chip {
+  background:var(--bg3); border:1px solid var(--border); border-radius:20px;
+  padding:4px 12px; font-size:0.7rem; color:var(--text-dim); cursor:pointer;
+  transition:all 0.15s; white-space:nowrap;
+}
+.pluto-chip:hover { border-color:var(--teal); color:var(--teal); background:var(--teal-glow2); }
+
+/* Recommended agent highlight */
+.agent-card.recommended {
+  border-color:rgba(0,200,200,0.6) !important;
+  box-shadow:0 0 14px rgba(0,200,200,0.12);
+}
+.agent-card.recommended .agent-head { background:var(--teal-glow2); }
+.rec-badge {
+  background:var(--teal); color:#000; font-size:0.6rem; font-weight:700;
+  padding:2px 8px; border-radius:10px; margin-left:6px;
+}
+
+/* ── Agent card detail ───────────────────────────────── */
+/* ── Agent Detail Modal ──────────────────────────────── */
+.agent-modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:2000;
+  display:none; align-items:center; justify-content:center; padding:16px;
+  backdrop-filter:blur(3px);
+}
+.agent-modal-overlay.open { display:flex; }
+.agent-modal-box {
+  background:var(--bg2); border:1px solid var(--border); border-radius:14px;
+  width:100%; max-width:500px; max-height:88vh; overflow-y:auto;
+  box-shadow:0 24px 64px rgba(0,0,0,0.6);
+  animation:modalIn .18s ease;
+}
+@keyframes modalIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+.agent-modal-head {
+  display:flex; align-items:center; gap:12px;
+  padding:16px 18px 14px; border-bottom:1px solid var(--border);
+  position:sticky; top:0; background:var(--bg2); z-index:1;
+}
+.agent-modal-icon { font-size:2rem; line-height:1; }
+.agent-modal-title { flex:1; }
+.agent-modal-name { font-size:1rem; font-weight:700; color:var(--text); }
+.agent-modal-seg { font-size:0.71rem; color:var(--text-muted); margin-top:2px; }
+.agent-modal-status { font-size:0.65rem; font-weight:700; }
+.agent-modal-close {
+  background:none; border:1px solid var(--border); color:var(--text-muted);
+  font-size:1rem; cursor:pointer; padding:4px 10px; border-radius:7px; line-height:1.4;
+  transition:all .15s;
+}
+.agent-modal-close:hover { background:var(--bg4); color:var(--text); border-color:var(--teal); }
+.agent-modal-body { padding:16px 18px; display:flex; flex-direction:column; gap:14px; }
+.detail-section { display:flex; flex-direction:column; gap:6px; }
+.detail-title { font-size:0.61rem; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase; }
+.detail-caps { display:flex; flex-direction:column; gap:4px; }
+.detail-cap { display:flex; align-items:flex-start; gap:7px; font-size:0.75rem; color:var(--text-dim); }
+.detail-cap::before { content:'✓'; color:var(--teal); font-size:0.72rem; flex-shrink:0; margin-top:1px; }
+.detail-requires { display:flex; gap:8px; flex-wrap:wrap; }
+.req-chip {
+  display:flex; align-items:center; gap:5px;
+  background:var(--bg4); border:1px solid var(--border);
+  border-radius:7px; padding:5px 11px; font-size:0.71rem; color:var(--text-dim);
+}
+.req-chip.needed { border-color:rgba(0,200,200,0.35); color:var(--teal); background:rgba(0,200,200,0.06); }
+.req-chip.sensor-type {
+  border-color:rgba(168,85,247,0.35); color:#c084fc; background:rgba(168,85,247,0.06);
+  font-size:0.68rem;
+}
+.req-chip.cam-type {
+  border-color:rgba(56,189,248,0.35); color:#7dd3fc; background:rgba(56,189,248,0.06);
+  font-size:0.68rem;
+}
+.detail-alert-box {
+  background:rgba(255,215,64,0.06); border:1px solid rgba(255,215,64,0.2);
+  border-radius:7px; padding:8px 12px; font-size:0.74rem; color:var(--yellow);
+}
+.detail-best { font-size:0.74rem; color:var(--text-dim); font-style:italic; }
+.detail-config-box {
+  font-size:0.72rem; color:var(--text-dim); font-family:monospace;
+  background:var(--bg4); padding:8px 12px; border-radius:7px;
+  border:1px solid var(--border);
+}
+.detail-activate-box {
+  background:var(--bg3); border:1px solid var(--border); border-radius:8px;
+  padding:10px 14px;
+}
+.detail-yaml { font-size:0.7rem; color:#7dd3fc; font-family:monospace; margin-top:5px; line-height:1.6; }
+
+/* ── Setup / Doctor ──────────────────────────────────── */
+.doctor-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; margin-bottom:16px; }
+.doctor-item {
+  background:var(--bg2); border:1px solid var(--border); border-radius:8px;
+  padding:14px; display:flex; align-items:flex-start; gap:12px;
+}
+.doctor-ic { width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
+.doctor-ic.ok { background:rgba(0,230,118,0.12); }
+.doctor-ic.warn { background:rgba(255,215,64,0.12); }
+.doctor-ic.fail { background:rgba(255,77,77,0.12); }
+.doctor-ic.scan { background:rgba(0,200,200,0.12); }
+.doctor-label { font-size:0.82rem; font-weight:600; color:var(--text); }
+.doctor-detail { font-size:0.7rem; color:var(--text-dim); margin-top:3px; line-height:1.4; }
+.doctor-status { margin-left:auto; font-size:0.68rem; font-weight:700; flex-shrink:0; }
+.doctor-status.ok { color:var(--green); }
+.doctor-status.warn { color:var(--yellow); }
+.doctor-status.fail { color:var(--red); }
+.doctor-status.scan { color:var(--teal); }
+
+/* ── WA Settings ─────────────────────────────────────── */
+.wa-config-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.wa-qr-box { display:flex; align-items:center; justify-content:center; padding:30px; background:var(--bg3); border-radius:8px; border:1px dashed var(--border); min-height:160px; }
+.wa-status-row { display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); margin-bottom:12px; }
+.wa-number-list { display:flex; flex-direction:column; gap:8px; }
+.wa-number-item { display:flex; align-items:center; gap:8px; background:var(--bg3); border-radius:6px; padding:8px 10px; border:1px solid var(--border); font-size:0.78rem; }
+.wa-number-item input { background:transparent; border:none; color:var(--text); font-size:0.78rem; flex:1; outline:none; }
+.wa-agent-assign { margin-left:auto; background:var(--bg4); border:1px solid var(--border); border-radius:4px; color:var(--text-dim); font-size:0.7rem; padding:2px 6px; cursor:pointer; }
+.btn { padding:8px 16px; border-radius:6px; font-size:0.78rem; font-weight:600; cursor:pointer; border:none; transition:all 0.15s; }
+.btn-teal { background:var(--teal); color:#000; }
+.btn-teal:hover { background:var(--teal-dim); }
+.btn-outline { background:transparent; border:1px solid var(--border); color:var(--text-dim); }
+.btn-outline:hover { border-color:var(--teal); color:var(--teal); }
+.btn-sm { padding:4px 10px; font-size:0.7rem; }
+.btn-danger { background:rgba(255,77,77,0.15); border:1px solid var(--red); color:var(--red); }
+
+/* ── Segment picker ──────────────────────────────────── */
+.seg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
+.seg-item {
+  background:var(--bg3); border:1px solid var(--border); border-radius:8px;
+  padding:14px 8px; text-align:center; cursor:pointer; transition:all 0.15s;
+}
+.seg-item:hover, .seg-item.selected { border-color:var(--teal); background:var(--teal-glow); }
+.seg-item .seg-emoji { font-size:1.6rem; margin-bottom:4px; }
+.seg-item .seg-name { font-size:0.7rem; color:var(--text-dim); }
+.seg-item.selected .seg-name { color:var(--teal); }
+
+/* ── Log ─────────────────────────────────────────────── */
+.log-box {
+  background:var(--bg); border-radius:6px; padding:12px; font-family:monospace;
+  font-size:0.72rem; max-height:400px; overflow-y:auto; line-height:1.7;
+  border:1px solid var(--border);
+}
+.log-info { color:var(--teal); }
+.log-warn { color:var(--yellow); }
+.log-error { color:var(--red); }
+.log-ok { color:var(--green); }
+.log-dim { color:var(--text-muted); }
+
+/* ── System Status Bar (dashboard) ──────────────────── */
+.sys-status-bar {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  background:var(--bg2); border:1px solid var(--border); border-radius:10px;
+  padding:10px 16px; margin-bottom:14px;
+}
+.sys-pill {
+  display:flex; align-items:center; gap:6px;
+  background:var(--bg3); border:1px solid var(--border);
+  border-radius:20px; padding:4px 12px; font-size:0.72rem; color:var(--text-dim);
+  white-space:nowrap;
+}
+.sys-pill .dot { flex-shrink:0; }
+.sys-pill.ok { border-color:rgba(0,230,118,0.25); color:var(--green); }
+.sys-pill.warn { border-color:rgba(255,215,64,0.25); color:var(--yellow); }
+.sys-pill.off { border-color:rgba(255,77,77,0.2); color:var(--red); }
+.sys-pill.neutral { border-color:var(--border); color:var(--text-dim); }
+.sys-pill .pill-val { color:var(--text); font-weight:600; }
+.sys-bar-cap {
+  margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+}
+.cap-item {
+  display:flex; align-items:center; gap:5px;
+  font-size:0.7rem; color:var(--text-muted);
+}
+.cap-bar { width:50px; height:4px; background:var(--bg4); border-radius:4px; overflow:hidden; }
+.cap-bar-fill { height:100%; background:var(--teal); border-radius:4px; transition:width 0.5s; }
+
+/* ── Sensor cards ────────────────────────────────────── */
+.sensor-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+.sensor-card {
+  background:var(--bg2); border:1px solid var(--border); border-radius:10px;
+  overflow:hidden; transition:border-color 0.2s;
+}
+.sensor-card:hover { border-color:var(--teal-dim); }
+.sensor-card.active { border-color:rgba(0,200,200,0.35); }
+.sensor-card.inactive { opacity:0.55; }
+.sensor-head {
+  padding:12px 14px; display:flex; align-items:center; gap:10px;
+  border-bottom:1px solid var(--border);
+}
+.sensor-icon {
+  width:36px; height:36px; border-radius:8px; background:var(--teal-glow);
+  display:flex; align-items:center; justify-content:center; font-size:1.2rem; flex-shrink:0;
+}
+.sensor-name { font-size:0.84rem; font-weight:600; color:var(--text); }
+.sensor-type { font-size:0.68rem; color:var(--text-dim); }
+.sensor-body { padding:14px; }
+.sensor-reading {
+  font-size:1.6rem; font-weight:700; color:var(--teal); line-height:1.1;
+  margin-bottom:4px;
+}
+.sensor-reading.na { color:var(--text-muted); font-size:1.1rem; }
+.sensor-unit { font-size:0.7rem; color:var(--text-dim); }
+.sensor-meta { font-size:0.68rem; color:var(--text-muted); margin-top:8px; display:flex; gap:10px; }
+.sensor-pin { background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:2px 7px; font-family:monospace; font-size:0.65rem; color:var(--teal); }
+
+/* ── Actuator cards ──────────────────────────────────── */
+.actuator-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
+.actuator-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; overflow:hidden; transition:border-color 0.2s; }
+.actuator-card.on  { border-color:rgba(0,220,130,0.5); box-shadow:0 0 12px rgba(0,220,130,0.08); }
+.actuator-card.off { opacity:0.75; }
+.actuator-head { display:flex; align-items:center; gap:10px; padding:12px 14px 8px; }
+.actuator-icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; background:var(--bg3); flex-shrink:0; }
+.actuator-icon.on  { background:rgba(0,220,130,0.15); }
+.actuator-name { font-size:0.84rem; font-weight:600; color:var(--text); }
+.actuator-type { font-size:0.67rem; color:var(--text-dim); }
+.actuator-body { padding:0 14px 14px; }
+.actuator-state { font-size:1.4rem; font-weight:700; margin-bottom:10px; }
+.actuator-state.on  { color:var(--green); }
+.actuator-state.off { color:var(--text-muted); }
+.actuator-btns { display:flex; gap:6px; flex-wrap:wrap; }
+.act-btn { flex:1; min-width:48px; padding:5px 4px; border:1px solid var(--border); background:var(--bg3); color:var(--text); border-radius:6px; font-size:0.72rem; cursor:pointer; text-align:center; transition:all 0.15s; }
+.act-btn:hover { border-color:var(--teal); color:var(--teal); }
+.act-btn.on-btn:hover  { background:rgba(0,220,130,0.15); border-color:var(--green); color:var(--green); }
+.act-btn.off-btn:hover { background:rgba(255,80,80,0.1); border-color:#e05; color:#e05; }
+.act-pin { background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:2px 7px; font-family:monospace; font-size:0.65rem; color:var(--teal); margin-top:8px; display:inline-block; }
+
+/* capacity info card */
+.capacity-card {
+  background:var(--bg2); border:1px solid var(--border); border-radius:10px;
+  padding:16px; margin-bottom:14px;
+}
+.capacity-row { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+.capacity-row:last-child { margin-bottom:0; }
+.cap-label { font-size:0.75rem; color:var(--text-dim); width:100px; flex-shrink:0; }
+.cap-track { flex:1; height:6px; background:var(--bg4); border-radius:6px; overflow:hidden; }
+.cap-fill { height:100%; border-radius:6px; transition:width 0.6s; }
+.cap-fill.cam { background:linear-gradient(90deg,var(--teal),var(--teal-dim)); }
+.cap-fill.sensor { background:linear-gradient(90deg,#7c3aed,#a855f7); }
+.cap-fill.agent { background:linear-gradient(90deg,var(--green),#00c896); }
+.cap-count { font-size:0.75rem; color:var(--text); font-weight:600; min-width:50px; text-align:right; }
+
+/* ── Scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+
+/* ── Progress bar ────────────────────────────────────── */
+.progress-wrap { background:var(--bg3); border-radius:4px; height:4px; overflow:hidden; }
+.progress-bar { height:100%; background:linear-gradient(90deg,var(--teal),var(--teal-dim)); border-radius:4px; transition:width 0.5s; }
+
+/* ── Responsive ──────────────────────────────────────── */
+@media(max-width:1100px) {
+  .stats-grid { grid-template-columns:1fr 1fr; }
+}
+@media(max-width:768px) {
+  /* Mobile: sidebar jadi overlay, default hidden di kiri */
+  .sidebar {
+    width: 220px !important;
+    left: -220px;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+  }
+  .sidebar.mobile-open {
+    left: 0;
+  }
+  .sidebar.collapsed {
+    width: 220px !important;
+    left: -220px;
+  }
+  .sidebar.collapsed .logo-text,
+  .sidebar.collapsed .logo-sub { opacity:1; pointer-events:auto; }
+  .sidebar.collapsed .nav-section { opacity:1; }
+  .sidebar.collapsed .nav-item { padding:9px 12px; justify-content:flex-start; }
+  .sidebar.collapsed .nav-item .nav-label { opacity:1; width:auto; overflow:visible; }
+  .sidebar.collapsed .nav-badge { opacity:1; width:auto; padding:1px 6px; margin-left:auto; }
+  .sidebar.collapsed .sidebar-footer-full { display:block; }
+  .sidebar.collapsed .sidebar-dots-mini { display:none; }
+  .sidebar.collapsed .sidebar-footer { opacity:1; height:auto; padding:10px 14px; }
+  .sidebar-toggle { display:none !important; }
+  .topbar-hamburger { display:flex !important; }
+  .main { margin-left:0 !important; }
+  .stats-grid { grid-template-columns:1fr 1fr; }
+  .grid-2, .grid-3 { grid-template-columns:1fr; }
+  .content { padding:12px 14px; }
+  .device-chip { display:none; }
+}
+@media(max-width:480px) {
+  .stats-grid { grid-template-columns:1fr 1fr; }
+  .agent-grid { grid-template-columns:1fr; }
+  .doctor-grid { grid-template-columns:1fr; }
+  .seg-grid { grid-template-columns:repeat(3,1fr); }
+  .time-chip { font-size:0.7rem; padding:3px 8px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── OVERLAY (mobile) ──────────────────────────────── -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+<!-- ── SIDEBAR ─────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <img src="/public/pluto_logo_nobackground.png" alt="Pluto" style="width:30px;height:30px;object-fit:contain;flex-shrink:0;"/>
+    <div>
+      <div class="logo-text">PlutoClaw</div>
+      <div class="logo-sub">Edge AI Framework</div>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <div class="nav-section">Main</div>
+    <div class="nav-item active" onclick="showPage('dashboard',this)" data-tooltip="Dashboard">
+      <span class="icon">⬡</span><span class="nav-label">Dashboard</span>
+    </div>
+    <div class="nav-item" onclick="showPage('pluto',this)" data-tooltip="Pluto AI">
+      <span class="icon">🐾</span><span class="nav-label">Pluto AI</span>
+    </div>
+    <div class="nav-item" onclick="showPage('skills',this)" data-tooltip="Skills">
+      <span class="icon">⚡</span><span class="nav-label">Skills</span>
+      <span class="nav-badge" id="agentBadge">0</span>
+    </div>
+    <div class="nav-item" onclick="showPage('sensors',this)" data-tooltip="Sensors & Actuators">
+      <span class="icon">📡</span><span class="nav-label">Sensors</span>
+    </div>
+    <div class="nav-item" onclick="showPage('cameras',this)" data-tooltip="Cameras">
+      <span class="icon">📹</span><span class="nav-label">Cameras</span>
+    </div>
+
+    <div class="nav-section">Pengaturan</div>
+    <div class="nav-item" onclick="showPage('whatsapp',this)" data-tooltip="WhatsApp">
+      <span class="icon">💬</span><span class="nav-label">WhatsApp</span>
+    </div>
+    <div class="nav-item" onclick="showPage('setup',this)" data-tooltip="Setup & Health">
+      <span class="icon">🔧</span><span class="nav-label">Setup & Health</span>
+      <span class="nav-badge red" id="doctorBadge" style="display:none">!</span>
+    </div>
+    <div class="nav-item" onclick="showPage('logs',this)" data-tooltip="System Log">
+      <span class="icon">📋</span><span class="nav-label">System Log</span>
+    </div>
+  </nav>
+
+  <!-- Footer expanded -->
+  <div class="sidebar-footer sidebar-footer-full">
+    <div class="sys-status"><div class="dot green" id="ollamaIndicator"></div><span>Ollama</span></div>
+    <div class="sys-status"><div class="dot" id="waIndicator" style="background:var(--text-muted)"></div><span>WhatsApp</span></div>
+    <div class="sys-status"><div class="dot green"></div><span id="envLabel">MAC</span></div>
+  </div>
+  <!-- Footer collapsed (dots only) -->
+  <div class="sidebar-dots-mini">
+    <div class="dot green" id="ollamaIndicator2" title="Ollama"></div>
+    <div class="dot" id="waIndicator2" style="background:var(--text-muted)" title="WhatsApp"></div>
+    <div class="dot green" title="Platform"></div>
+  </div>
+</aside>
+
+<!-- ── SIDEBAR TOGGLE (fixed outside sidebar so it is not clipped) ── -->
+<div class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Toggle sidebar">◀</div>
+
+<!-- ── TOPBAR ───────────────────────────────────────── -->
+<div class="main" id="mainContent">
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:4px">
+    <!-- Hamburger (mobile only) -->
+    <div class="topbar-hamburger" id="topbarHamburger" onclick="openSidebar()">☰</div>
+    <div class="page-title" id="pageTitle">Dashboard</div>
+  </div>
+  <div class="topbar-right">
+    <span class="device-chip" id="deviceChip">PlutoClaw-Dev</span>
+    <span class="time-chip" id="clock">--:--:--</span>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- ══ DASHBOARD PAGE ════════════════════════════════ -->
+<div class="page active" id="page-dashboard">
+
+  <!-- Stats cards -->
+  <div class="stats-grid">
+    <div class="stat-card" onclick="showPage('skills',document.querySelector('[onclick*=\"skills\"]'))" style="cursor:pointer">
+      <div class="stat-icon-box">⚡</div>
+      <div class="stat-info">
+        <div class="stat-label">Active Skills</div>
+        <div class="stat-val" id="s-agents">0</div>
+        <div class="stat-sub">of <span id="s-agents-total">0</span> registered</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon-box">📹</div>
+      <div class="stat-info">
+        <div class="stat-label">Cameras Online</div>
+        <div class="stat-val" id="s-cams">0</div>
+        <div class="stat-sub" id="s-cams-sub">cameras connected</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon-box">📡</div>
+      <div class="stat-info">
+        <div class="stat-label">Active Sensors</div>
+        <div class="stat-val" id="s-sensors">0</div>
+        <div class="stat-sub" id="s-sensors-sub">sensors configured</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon-box">🔔</div>
+      <div class="stat-info">
+        <div class="stat-label">Alerts Today</div>
+        <div class="stat-val" id="s-today">0</div>
+        <div class="stat-sub" id="s-total-sub">total: <span id="s-total">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- System Status Bar -->
+  <div class="sys-status-bar" id="sysStatusBar">
+    <!-- Pills kiri: status komponen -->
+    <div class="sys-pill neutral" id="pill-platform">
+      <span>💻</span><span class="pill-val" id="pill-platform-val">MAC</span>
+    </div>
+    <div class="sys-pill" id="pill-ollama">
+      <div class="dot" id="pill-ollama-dot"></div>
+      <span>Ollama</span>
+      <span class="pill-val" id="pill-ollama-val">—</span>
+    </div>
+    <div class="sys-pill" id="pill-wa">
+      <div class="dot" id="pill-wa-dot"></div>
+      <span>WhatsApp</span>
+      <span class="pill-val" id="pill-wa-val">Offline</span>
+    </div>
+    <div class="sys-pill neutral" id="pill-hailo">
+      <span>⚡</span><span>Hailo NPU</span>
+      <span class="pill-val" id="pill-hailo-val">N/A</span>
+    </div>
+    <!-- Kanan: device capacity -->
+    <div class="sys-bar-cap">
+      <div class="cap-item" title="Camera device capacity">
+        <span style="font-size:0.7rem">📹</span>
+        <div class="cap-bar"><div class="cap-bar-fill" id="cap-cam-bar" style="width:0%"></div></div>
+        <span id="cap-cam-text" style="font-size:0.7rem;color:var(--text-dim)">0/0</span>
+      </div>
+      <div class="cap-item" title="Sensor device capacity">
+        <span style="font-size:0.7rem">📡</span>
+        <div class="cap-bar"><div class="cap-bar-fill" id="cap-sen-bar" style="width:0%;background:#a855f7"></div></div>
+        <span id="cap-sen-text" style="font-size:0.7rem;color:var(--text-dim)">0/0</span>
+      </div>
+      <span id="cap-device-label" style="font-size:0.68rem;color:var(--text-muted);border-left:1px solid var(--border);padding-left:8px">—</span>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Camera preview -->
+    <div class="card">
+      <div class="card-head">📹 LIVE FEED <span id="camCount">0 camera</span></div>
+      <div class="cam-grid" id="camPreview">
+        <div style="padding:30px;color:var(--text-muted);font-size:0.8rem;text-align:center;grid-column:1/-1">
+          Loading cameras...
+        </div>
+      </div>
+    </div>
+
+    <!-- Alert log -->
+    <div class="card">
+      <div class="card-head">🔔 LATEST ALERTS <span>auto-refresh 5s</span></div>
+      <div class="alert-list" id="alertList">
+        <div class="alert-empty">No alerts yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Skills status mini -->
+  <div class="card mt">
+    <div class="card-head">⚡ SKILL STATUS <span style="font-size:0.68rem;color:var(--text-muted);font-weight:400">click for details</span></div>
+    <div style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;" id="agentMiniList">
+      <div style="color:var(--text-muted);font-size:0.78rem">Memuat skills...</div>
+    </div>
+  </div>
+
+  <!-- Pluto automation status -->
+  <div class="card mt">
+    <div class="card-head">🐾 PLUTO AUTOMATION <span id="autoStatusPill" style="font-size:0.68rem;padding:2px 8px;border-radius:10px;background:#14532d;color:#22c55e;font-weight:600">ON</span></div>
+    <div style="padding:10px 14px;font-size:0.78rem;color:var(--text-dim)" id="autoStatusDesc">
+      Pluto monitors system conditions automatically every 60 seconds.
+    </div>
+  </div>
+</div>
+
+<!-- ══ PLUTO AI PAGE ══════════════════════════════════ -->
+<div class="page" id="page-pluto">
+  <div style="max-width:760px;margin:0 auto">
+    <div class="pluto-chat-wrap" style="border-radius:12px;overflow:hidden">
+      <div class="pluto-chat-header">
+        <div class="pluto-chat-header-left">
+          <div class="pluto-avatar">🐾</div>
+          <div>
+            <div class="pluto-name">Pluto AI</div>
+            <div class="pluto-subtitle">Conversation &amp; Automation Orchestrator</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="pluto-online"><div class="dot green" style="width:7px;height:7px"></div> Online</div>
+          <span id="plutoDatasetBadge" title="Interactions saved for Pluto-LM training"
+            style="font-size:0.65rem;color:var(--text-dim);background:var(--bg3);padding:2px 6px;border-radius:8px;">
+            dataset: 0
+          </span>
+        </div>
+      </div>
+      <div id="plutoBody">
+        <div class="pluto-messages" id="plutoMessages">
+          <div class="msg-row">
+            <div class="msg-avatar pluto">🐾</div>
+            <div class="msg-bubble pluto">Hello! I'm <strong>Pluto</strong> — PlutoClaw's AI orchestrator. 🐾<br><br>
+I monitor all skills and sensors in real-time, and can take automatic actions based on conditions that arise.<br><br>
+You can also chat directly — ask for status, give commands, or request a system condition analysis.</div>
+          </div>
+        </div>
+        <div class="pluto-chips" id="plutoChips">
+          <span class="pluto-chip" onclick="plutoSendChip(this)">📊 Status sistem sekarang</span>
+          <span class="pluto-chip" onclick="plutoSendChip(this)">🌡️ Read temperature sensor</span>
+          <span class="pluto-chip" onclick="plutoSendChip(this)">💧 Turn on water pump</span>
+          <span class="pluto-chip" onclick="plutoSendChip(this)">⚡ Which skills are active?</span>
+          <span class="pluto-chip" onclick="plutoSendChip(this)">📋 Latest alerts</span>
+          <span class="pluto-chip" onclick="plutoSendChip(this)">🌱 Check soil moisture</span>
+        </div>
+        <div class="pluto-input-row">
+          <textarea class="pluto-input" id="plutoInput" placeholder="Chat with Pluto or give a command..." rows="1"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();plutoSend()}"></textarea>
+          <button class="pluto-send-btn" id="plutoSendBtn" onclick="plutoSend()">➤</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Automation info card -->
+    <div class="card mt">
+      <div class="card-head">🤖 AUTOMATION MODE <span id="autoModePill2" style="font-size:0.68rem;padding:2px 8px;border-radius:10px;background:#14532d;color:#22c55e;font-weight:600">AKTIF</span></div>
+      <div style="padding:12px 14px;font-size:0.78rem;color:var(--text-dim);line-height:1.7">
+        Pluto proactively monitors all skills and sensors.<br>
+        If an anomaly is detected, Pluto will take automatic action without requiring a command.<br>
+        <span style="color:var(--text-muted)">Last check: <span id="autoLastCheck">—</span> &nbsp;|&nbsp; Last action: <span id="autoLastAction">—</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SKILLS PAGE ════════════════════════════════════ -->
+<div class="page" id="page-skills">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:0.88rem;font-weight:600;color:var(--text)">⚡ Skills Registry</div>
+      <div style="font-size:0.72rem;color:var(--text-dim);margin-top:2px">PlutoClaw building blocks — activate skills for your industry</div>
+    </div>
+    <a onclick="showPage('pluto', document.querySelectorAll('.nav-item')[1])" style="cursor:pointer;font-size:0.75rem;color:var(--teal);text-decoration:none">
+      💬 Ask Pluto to help pick a skill →
+    </a>
+  </div>
+
+  <!-- Search -->
+  <div style="margin-bottom:12px;position:relative">
+    <input id="skillSearch" type="text" placeholder="🔍  Search skills (name, description, hardware...)"
+      oninput="renderSkillGrid()"
+      style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);color:var(--text);
+             border-radius:8px;padding:8px 12px;font-size:0.8rem;outline:none;transition:border .15s"
+      onfocus="this.style.borderColor='var(--teal)'" onblur="this.style.borderColor='var(--border)'"/>
+  </div>
+
+  <!-- Category filter tabs -->
+  <div id="skillFilterBar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+    <button class="btn btn-teal btn-sm" onclick="setSkillCat('all',this)">All</button>
+    <button class="btn btn-outline btn-sm" onclick="setSkillCat('industrial',this)">⚙️ Industrial</button>
+    <button class="btn btn-outline btn-sm" onclick="setSkillCat('agriculture',this)">🌱 Agriculture</button>
+    <button class="btn btn-outline btn-sm" onclick="setSkillCat('medical',this)">🏥 Medical</button>
+    <button class="btn btn-outline btn-sm" onclick="setSkillCat('smart_home',this)">🏠 Smart Home</button>
+    <button class="btn btn-outline btn-sm" onclick="setSkillCat('logistics',this)">📦 Logistics</button>
+    <button class="btn btn-outline btn-sm" onclick="setSkillCat('security',this)">🔒 Security</button>
+    <button class="btn btn-outline btn-sm" onclick="setSkillCat('sustainability',this)">🌍 Sustainability</button>
+  </div>
+
+  <!-- Category header (shown when not "all") -->
+  <div id="skillCatHeader" style="display:none;margin-bottom:12px;padding:10px 14px;
+    background:var(--bg3);border:1px solid var(--border);border-radius:8px">
+  </div>
+
+  <div class="agent-grid" id="skillGrid"><!-- populated by renderSkillGrid() --></div>
+</div>
+
+<!-- ══ CAMERAS PAGE ═══════════════════════════════════ -->
+<div class="page" id="page-cameras">
+  <div class="card">
+    <div class="card-head">📹 CONNECTED CAMERAS <span id="totalCamLabel">0 cameras</span></div>
+    <div class="cam-grid" id="allCamGrid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
+      <div style="padding:30px;color:var(--text-muted);font-size:0.8rem;text-align:center;grid-column:1/-1">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SENSORS PAGE ═══════════════════════════════════ -->
+<div class="page" id="page-sensors">
+
+  <!-- Capacity + info bar -->
+  <div class="capacity-card" id="sensorCapCard">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div style="font-size:0.88rem;font-weight:600;color:var(--text)">📡 Sensors & Device Capacity</div>
+        <div style="font-size:0.72rem;color:var(--text-dim);margin-top:2px" id="sensorDeviceNote">Loading device info...</div>
+      </div>
+      <span class="btn btn-outline btn-sm" id="sensorDeviceType" style="cursor:default">—</span>
+    </div>
+    <div class="capacity-row">
+      <div class="cap-label">📹 Cameras</div>
+      <div class="cap-track"><div class="cap-fill cam" id="cap2-cam" style="width:0%"></div></div>
+      <div class="cap-count" id="cap2-cam-text">0 / 0</div>
+    </div>
+    <div class="capacity-row">
+      <div class="cap-label">📡 Sensors</div>
+      <div class="cap-track"><div class="cap-fill sensor" id="cap2-sen" style="width:0%"></div></div>
+      <div class="cap-count" id="cap2-sen-text">0 / 0</div>
+    </div>
+    <div class="capacity-row">
+      <div class="cap-label">🤖 Agent</div>
+      <div class="cap-track"><div class="cap-fill agent" id="cap2-age" style="width:0%"></div></div>
+      <div class="cap-count" id="cap2-age-text">0 / 0</div>
+    </div>
+    <!-- Supported sensor types -->
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:8px;letter-spacing:1px;text-transform:uppercase">Tipe sensor didukung</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px" id="supportedSensorTypes">
+        <span style="color:var(--text-muted);font-size:0.75rem">Loading...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sensor cards -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="font-size:0.8rem;color:var(--text-dim)">Sensor terkonfigurasi di <code style="color:var(--teal);font-size:0.75rem">config.yaml → sensors:</code></div>
+    <button class="btn btn-teal btn-sm" onclick="loadSensors()">↻ Refresh</button>
+  </div>
+
+  <div class="sensor-grid" id="sensorGrid">
+    <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted);font-size:0.8rem">Memuat sensor...</div>
+  </div>
+
+  <!-- ── Actuator Control Panel ───────────────────────── -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 12px">
+    <div>
+      <div style="font-size:1rem;font-weight:700;color:var(--text)">⚡ Actuator Control</div>
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-top:2px">Kontrol relay, buzzer, LED dari dashboard atau via Pluto AI</div>
+    </div>
+    <button class="btn btn-teal btn-sm" onclick="loadActuators()">↻ Refresh</button>
+  </div>
+
+  <div class="actuator-grid" id="actuatorGrid">
+    <div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem">Memuat actuator...</div>
+  </div>
+
+  <!-- GPIO types reference -->
+  <div class="card mt" style="margin-top:14px">
+    <div class="card-head">📖 REFERENSI TIPE SENSOR GPIO</div>
+    <div style="padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid var(--border)">
+        <div style="font-size:0.85rem;font-weight:600;color:var(--teal)">🌡️ DHT22</div>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">Temp + Humidity<br>GPIO Digital — 1 pin</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid var(--border)">
+        <div style="font-size:0.85rem;font-weight:600;color:var(--teal)">💨 MQ135</div>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">Gas/Ammonia (ppm)<br>Analog via ADC — 1 pin</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid var(--border)">
+        <div style="font-size:0.85rem;font-weight:600;color:var(--teal)">💧 Soil Moisture</div>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">Soil moisture<br>Analog via ADC — 1 pin</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid var(--border)">
+        <div style="font-size:0.85rem;font-weight:600;color:var(--teal)">🏃 PIR Motion</div>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">Motion detection<br>GPIO Digital — 1 pin</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid var(--border)">
+        <div style="font-size:0.85rem;font-weight:600;color:var(--teal)">🌡️ DS18B20</div>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">Waterproof temp<br>1-Wire — 1 pin</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid var(--border)">
+        <div style="font-size:0.85rem;font-weight:600;color:var(--teal)">📏 HC-SR04</div>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px">Ultrasonic distance<br>GPIO Digital — 2 pins</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ WHATSAPP PAGE ══════════════════════════════════ -->
+<div class="page" id="page-whatsapp">
+  <div class="grid-2">
+    <!-- Connection -->
+    <div class="card">
+      <div class="card-head">💬 STATUS WHATSAPP</div>
+      <div class="card-body">
+        <div class="wa-status-row">
+          <div class="dot" id="waDot" style="background:var(--text-muted)"></div>
+          <span id="waStatusText" style="font-size:0.82rem">Not connected</span>
+          <button class="btn btn-teal btn-sm" style="margin-left:auto" onclick="connectWA()">Connect</button>
+        </div>
+        <div class="wa-qr-box" id="waQrBox">
+          <div style="text-align:center;color:var(--text-muted);font-size:0.78rem">
+            <div style="font-size:2rem;margin-bottom:8px">📱</div>
+            Click "Connect" then scan QR<br>in WhatsApp → Linked Devices
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Numbers & Agent assignment -->
+    <div class="card">
+      <div class="card-head">📞 ALERT RECIPIENTS</div>
+      <div class="card-body">
+        <!-- Enable toggle -->
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+          padding:10px 14px;margin-bottom:14px">
+          <div>
+            <div style="font-size:0.8rem;font-weight:600">Enable WhatsApp Alerts</div>
+            <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px">
+              Send detection notifications to the numbers below
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="waEnabledToggle" style="width:18px;height:18px;cursor:pointer">
+            <span style="font-size:0.75rem;color:var(--text-dim)">Active</span>
+          </label>
+        </div>
+
+        <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:10px">
+          Add recipient phone numbers for alerts. Each number can be configured to receive alerts from specific agents or all agents.
+        </div>
+
+        <div id="waNumberList">
+          <!-- populated by JS -->
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-outline btn-sm" style="flex:1" onclick="addWANumber()">+ Add Number</button>
+          <button class="btn btn-teal btn-sm" style="flex:1" id="waSaveBtn" onclick="saveWAConfig()">💾 Save Settings</button>
+        </div>
+
+        <div style="margin-top:10px;padding:10px;background:rgba(0,180,180,0.06);
+          border:1px solid rgba(0,180,180,0.15);border-radius:7px;font-size:0.7rem;color:var(--text-muted)">
+          💡 <strong style="color:var(--teal)">Tip:</strong> Click <strong>📤 Test</strong> on each number to verify messages are delivered before saving.
+          WA Bridge must be connected first.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SETUP PAGE ══════════════════════════════════════ -->
+<div class="page" id="page-setup">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <div>
+      <div style="font-size:0.9rem;font-weight:600">Setup & Doctor</div>
+      <div style="font-size:0.72rem;color:var(--text-dim);margin-top:2px">Auto-detect all hardware and system QC</div>
+    </div>
+    <button class="btn btn-teal" onclick="runDoctor()">▶ Run Doctor</button>
+  </div>
+
+  <div class="doctor-grid" id="doctorGrid">
+    <!-- populated by JS -->
+  </div>
+
+  <!-- Doctor log -->
+  <div class="card">
+    <div class="card-head">📋 LOG DOCTOR</div>
+    <div class="card-body">
+      <div class="log-box" id="doctorLog">
+        <span class="log-dim">Not yet run. Click "Run Doctor" to start.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ LOGS PAGE ══════════════════════════════════════ -->
+<div class="page" id="page-logs">
+  <div class="card">
+    <div class="card-head">
+      📋 LOG SISTEM
+      <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="loadLogs()" style="padding:2px 10px">↻ Refresh</button>
+        <label style="display:flex;align-items:center;gap:4px;font-size:0.7rem;color:var(--text-dim);cursor:pointer">
+          <input type="checkbox" id="logAutoRefresh" onchange="toggleLogAutoRefresh(this.checked)" style="accent-color:var(--teal)"> Auto
+        </label>
+        <button class="btn btn-sm" onclick="clearLogs()"
+          style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;padding:2px 10px;font-size:0.7rem">
+          🗑 Clear
+        </button>
+      </span>
+    </div>
+
+    <!-- Filter bar -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;
+      border-bottom:1px solid var(--border);background:var(--bg2)">
+
+      <!-- Search -->
+      <div style="position:relative;flex:1;min-width:160px">
+        <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:0.8rem">🔍</span>
+        <input id="logSearch" type="text" placeholder="Search log text..."
+          oninput="loadLogs()"
+          style="width:100%;background:var(--bg4);border:1px solid var(--border);color:var(--text);
+            border-radius:6px;padding:5px 10px 5px 28px;font-size:0.75rem;box-sizing:border-box">
+      </div>
+
+      <!-- Level filter -->
+      <select id="logLevel" onchange="loadLogs()"
+        style="background:var(--bg4);border:1px solid var(--border);color:var(--text-dim);
+          font-size:0.72rem;border-radius:6px;padding:5px 8px">
+        <option value="">All Levels</option>
+        <option value="INFO">INFO</option>
+        <option value="WARNING">WARNING ⚠️</option>
+        <option value="ERROR">ERROR ❌</option>
+      </select>
+
+      <!-- Agent filter -->
+      <select id="logAgent" onchange="loadLogs()"
+        style="background:var(--bg4);border:1px solid var(--border);color:var(--text-dim);
+          font-size:0.72rem;border-radius:6px;padding:5px 8px">
+        <option value="">All Components</option>
+        <!-- Active agents populated dynamically by JS via updateLogAgentFilter() -->
+        <optgroup label="── Sistem ──">
+          <option value="plutoclaw.camera">Kamera</option>
+          <option value="plutoclaw.alert">Alert / WA</option>
+          <option value="plutoclaw.llm">LLM / Ollama</option>
+          <option value="plutoclaw.storage">Storage / DB</option>
+          <option value="plutoclaw.dashboard">Dashboard API</option>
+          <option value="plutoclaw.detector">YOLO Detector</option>
+        </optgroup>
+      </select>
+
+      <!-- Stats -->
+      <div id="logStats" style="font-size:0.68rem;color:var(--text-muted);white-space:nowrap;margin-left:auto">
+        — baris
+      </div>
+    </div>
+
+    <div class="card-body" style="padding:0">
+      <div class="log-box" id="sysLog" style="max-height:580px;border:none;border-radius:0">
+        <span class="log-dim">Memuat log...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+// ── Sidebar Toggle ────────────────────────────────────
+const _sidebar = document.getElementById('sidebar')
+const _main = document.getElementById('mainContent')
+const _overlay = document.getElementById('sidebarOverlay')
+const _toggleBtn = document.getElementById('sidebarToggle')
+
+let _sidebarCollapsed = localStorage.getItem('sb_collapsed') === '1'
+
+function _applySidebar() {
+  const isMobile = window.innerWidth <= 768
+  if(isMobile) {
+    _sidebar.classList.remove('collapsed')
+    _main.classList.remove('sidebar-collapsed')
+    // Hide toggle on mobile (CSS handles it too)
+    if(_toggleBtn) _toggleBtn.style.display = 'none'
+  } else {
+    if(_toggleBtn) _toggleBtn.style.display = 'flex'
+    if(_sidebarCollapsed) {
+      _sidebar.classList.add('collapsed')
+      _main.classList.add('sidebar-collapsed')
+      if(_toggleBtn) { _toggleBtn.textContent = '▶'; _toggleBtn.classList.add('sb-collapsed') }
+    } else {
+      _sidebar.classList.remove('collapsed')
+      _main.classList.remove('sidebar-collapsed')
+      if(_toggleBtn) { _toggleBtn.textContent = '◀'; _toggleBtn.classList.remove('sb-collapsed') }
+    }
+  }
+}
+
+function toggleSidebar() {
+  _sidebarCollapsed = !_sidebarCollapsed
+  localStorage.setItem('sb_collapsed', _sidebarCollapsed ? '1' : '0')
+  _applySidebar()
+}
+
+function openSidebar() {
+  _sidebar.classList.add('mobile-open')
+  _overlay.classList.add('visible')
+}
+
+function closeSidebar() {
+  _sidebar.classList.remove('mobile-open')
+  _overlay.classList.remove('visible')
+}
+
+window.addEventListener('resize', _applySidebar)
+_applySidebar()
+
+// ── State ──────────────────────────────────────────────
+const state = {
+  currentPage: 'dashboard',
+  agents: [],
+  cameras: [],
+  waNumbers: [],      // populated from /api/wa/config when WA page opens
+  waEnabled: false,
+  waConnected: false,
+  doctorResults: [],
+  selectedSeg: 'warehouse',
+}
+
+// Agent definitions per segment
+const AGENT_DEFS = {
+  warehouse: [
+    { id:'ppe_guard', name:'PPE Guard', icon:'⛑️', seg:'warehouse', segLabel:'🏭 Warehouse',
+      desc:'Detect workers without PPE (hard hat & safety vest)',
+      capabilities:['Detect missing hard hat','Detect missing safety vest','Count violations per shift','WhatsApp alert + photo snapshot'],
+      requires:{camera:1, sensor:0},
+      sensorTypes:[],
+      cameraTypes:['USB Webcam 1080p — indoor, production area','IP Cam WiFi (RTSP) — fixed mount overhead'],
+      alertOn:'Worker detected without full PPE',
+      config:'cooldown, confidence, work_hours',
+      bestFor:'Required for production areas & warehouses with safety regulations'
+    },
+    { id:'intrusion', name:'Intrusion Alert', icon:'🚨', seg:'warehouse', segLabel:'🏭 Warehouse',
+      desc:'Detect intruders outside operational hours via camera + optional PIR sensor',
+      capabilities:['Detect people outside working hours','Freely configure active hours (e.g. 22:00–05:00)','Real-time WhatsApp alert','PIR as secondary trigger'],
+      requires:{camera:1, sensor:1},
+      sensorTypes:['PIR HC-SR501 — motion detection at entry area'],
+      cameraTypes:['IP Cam Night Vision IR — required for night use','CCTV Outdoor Weatherproof — weather & dust resistant'],
+      alertOn:'Person detected outside configured hours',
+      config:'active_hours, cooldown',
+      bestFor:'Warehouse night security without 24-hour guards'
+    },
+    { id:'forklift_guard', name:'Forklift Guard', icon:'🚧', seg:'warehouse', segLabel:'🏭 Warehouse',
+      desc:'Prevent forklift vs worker accidents with proximity detection',
+      capabilities:['Detect proximity of forklift & person via camera','Alert when safe distance is exceeded','Log all hazardous events'],
+      requires:{camera:1, sensor:0},
+      sensorTypes:[],
+      cameraTypes:['USB Webcam 1080p 30fps — requires high frame rate','IP Cam Wide Angle 120° — overview of forklift area'],
+      alertOn:'Forklift and worker within dangerous proximity',
+      config:'safe_distance, cooldown',
+      bestFor:'Warehouses with active forklift traffic'
+    },
+    { id:'dock_monitor', name:'Dock Monitor', icon:'🚛', seg:'warehouse', segLabel:'🏭 Warehouse',
+      desc:'Automatically monitor loading/unloading dock activity',
+      capabilities:['Detect trucks entering/leaving','Log loading/unloading times','Alert if dock is idle too long'],
+      requires:{camera:1, sensor:0},
+      sensorTypes:[],
+      cameraTypes:['IP Cam Outdoor Weatherproof — heat/rain resistant','Wide Angle IP Cam 120°+ — covers entire dock'],
+      alertOn:'Abnormal activity at dock',
+      config:'idle_threshold',
+      bestFor:'Distribution centers with multiple docks'
+    },
+    { id:'fire_smoke', name:'Fire & Smoke', icon:'🔥', seg:'warehouse', segLabel:'🏭 Warehouse',
+      desc:'Early fire detection via AI camera + smoke/gas sensor',
+      capabilities:['Detect fire & smoke visually from camera','Read hazardous gas level from MQ2','Real-time emergency alert','Dual detection: camera + sensor'],
+      requires:{camera:1, sensor:1},
+      sensorTypes:['MQ2 — smoke, LPG, and flammable gas detection'],
+      cameraTypes:['IP Cam Standard — visual fire/smoke detection','Thermal Camera AMG8833 — hotspot heat detection'],
+      alertOn:'Fire/smoke detected on camera OR MQ2 gas level exceeds threshold',
+      config:'sensitivity, cooldown, gas_threshold',
+      bestFor:'Flammable goods warehouse, factory, chemical area'
+    },
+  ],
+  'farm-ayam': [
+    { id:'sick_chicken', name:'Sick Chicken Detector', icon:'🐔', seg:'farm-ayam', segLabel:'🐔 Chicken',
+      desc:'Early detection of sick chickens before disease spreads',
+      capabilities:['Detect idle/weak/separated chickens','Detect abnormal posture','Early alert before outbreak spreads','Monitor multiple coops'],
+      requires:{camera:1, sensor:0},
+      sensorTypes:[],
+      cameraTypes:['Wide Angle USB/IP Cam 120° — covers entire coop','Pi Camera v3 — high resolution for posture detection'],
+      alertOn:'Chicken showing signs of abnormal behavior',
+      config:'animal_class, confidence, cooldown',
+      bestFor:'Medium to large-scale broiler & layer poultry farms'
+    },
+    { id:'chicken_count', name:'Chicken Counter', icon:'🔢', seg:'farm-ayam', segLabel:'🐔 Chicken',
+      desc:'Automatically count chicken population at each interval',
+      capabilities:['Count chickens per frame','Daily population report','Detect sudden population drop (mortality)'],
+      requires:{camera:1, sensor:0},
+      sensorTypes:[],
+      cameraTypes:['Pi Camera v3 / HQ Camera — overhead top-down mount','Wide Angle Fisheye 180° — maximum coop coverage'],
+      alertOn:'Significant population drop from baseline',
+      config:'interval_seconds, tolerance',
+      bestFor:'Density monitoring & daily mortality estimation'
+    },
+    { id:'coop_monitor', name:'Coop Environment', icon:'🌡️', seg:'farm-ayam', segLabel:'🐔 Chicken',
+      desc:'Monitor coop environment: temperature, humidity, ammonia, light',
+      capabilities:['Read temperature & humidity (DHT22)','Read ammonia & gas level (MQ135)','Monitor light intensity (LDR/BH1750)','Alert when safety threshold is exceeded','Log historical sensor data'],
+      requires:{camera:0, sensor:3},
+      sensorTypes:[
+        'DHT22 — air temperature & relative humidity in coop',
+        'MQ135 — ammonia & CO2 from poultry waste',
+        'LDR / BH1750 — coop light intensity (lux)',
+      ],
+      cameraTypes:[],
+      alertOn:'Temp >35°C, ammonia >25ppm, humidity <40%, or inadequate light',
+      config:'temp_max, temp_min, ammonia_max, humidity_min, light_min',
+      bestFor:'Broiler/layer coops requiring strict environmental control'
+    },
+    { id:'feed_monitor', name:'Feed Monitor', icon:'🌾', seg:'farm-ayam', segLabel:'🐔 Chicken',
+      desc:'Automatically monitor feed level & daily consumption weight',
+      capabilities:['Detect feeder nearly empty (HC-SR04)','Weigh remaining feed (Load Cell)','Alert if feed not consumed (loss of appetite sign)','Estimate daily consumption'],
+      requires:{camera:1, sensor:2},
+      sensorTypes:[
+        'HC-SR04 — feed level/height in silo/feeder',
+        'HX711 + Load Cell — remaining feed weight (g/kg)',
+      ],
+      cameraTypes:['USB Webcam Standard — focused on feed area','Pi Camera v2/v3 — sufficient resolution for feed level detection'],
+      alertOn:'Feed nearly empty OR consumption drops drastically from baseline',
+      config:'empty_threshold, weight_baseline, check_interval',
+      bestFor:'Feed management optimization & early appetite loss detection'
+    },
+  ],
+  'farm-sapi': [
+    { id:'estrus_detect', name:'Estrus Detector', icon:'💡', seg:'farm-sapi', segLabel:'🐄 Cattle',
+      desc:'Detect cattle in estrus for mating/insemination optimization',
+      capabilities:['Detect mounting & restless behavior from camera','Alert for optimal insemination window','Improve conception rate'],
+      requires:{camera:1, sensor:0},
+      sensorTypes:[],
+      cameraTypes:['IP Cam Night Vision IR — cattle active day & night','Wide Angle IP Cam Outdoor — covers pen/pasture area'],
+      alertOn:'Cattle showing signs of estrus',
+      config:'cooldown, sensitivity',
+      bestFor:'Dairy & feedlot cattle farms with high reproduction targets'
+    },
+    { id:'birth_monitor', name:'Birth Monitor', icon:'🐄', seg:'farm-sapi', segLabel:'🐄 Cattle',
+      desc:'Detect signs of imminent calving, 24 hours a day',
+      capabilities:['Detect pre-partum posture from camera','Early alert 1-2 hours before birth','Reduce calf mortality from unattended births'],
+      requires:{camera:1, sensor:0},
+      sensorTypes:[],
+      cameraTypes:['IP Cam Night Vision IR — required, calving often happens at night','Pi Camera v3 NoIR — no IR filter, sensitive in low light'],
+      alertOn:'Cattle in pre-calving position/behavior',
+      config:'cooldown',
+      bestFor:'Pregnant cattle farms requiring 24-hour monitoring'
+    },
+    { id:'health_monitor', name:'Health Monitor', icon:'🏥', seg:'farm-sapi', segLabel:'🐄 Cattle',
+      desc:'Monitor daily cattle health & activity + water consumption',
+      capabilities:['Detect cattle inactive/lying down too long','Monitor drinking water consumption (flow sensor)','Alert if any animal appears sick'],
+      requires:{camera:1, sensor:1},
+      sensorTypes:[
+        'Water Flow YF-S201 — daily drinking water consumption (liters)',
+      ],
+      cameraTypes:['IP Cam Wide Angle Outdoor — monitors entire livestock area','IP Cam PTZ (Pan-Tilt-Zoom) — remotely directable to specific cattle'],
+      alertOn:'Cattle inactive >X hours or water consumption drops drastically',
+      config:'activity_threshold, water_baseline, cooldown',
+      bestFor:'Large-scale feedlot & dairy cattle operations'
+    },
+  ],
+  'farm-kambing': [
+    { id:'goat_health', name:'Goat Health', icon:'🐐', seg:'farm-kambing', segLabel:'🐐 Kambing',
+      desc:'Monitor goat health via camera + pen environment',
+      capabilities:['Detect weak or inactive goats','Detect abnormal behavior','Monitor pen temperature & humidity','Early disease alert'],
+      requires:{camera:1, sensor:1},
+      sensorTypes:[
+        'DHT22 — air temperature & humidity in goat pen',
+      ],
+      cameraTypes:['IP Cam Indoor/Outdoor — goat pen','USB Webcam 720p+ — sufficient for behavior detection'],
+      alertOn:'Goat showing unhealthy signs or extreme pen conditions',
+      config:'confidence, cooldown, temp_max',
+      bestFor:'PE & Etawa goat farms'
+    },
+    { id:'goat_count', name:'Goat Counter', icon:'🔢', seg:'farm-kambing', segLabel:'🐐 Kambing',
+      desc:'Automatically count goat population, detect if any escape',
+      capabilities:['Count goats per frame','Alert if count decreases (escaped/stolen)'],
+      requires:{camera:1, sensor:0},
+      sensorTypes:[],
+      cameraTypes:['Wide Angle IP Cam 120°+ — ensure full area coverage','Pi Camera v3 overhead — top-down position for accurate count'],
+      alertOn:'Sudden population drop from baseline count',
+      config:'interval_seconds, baseline_count',
+      bestFor:'Medium-scale goat pen monitoring'
+    },
+  ],
+  'farm-sayur': [
+    { id:'disease_leaf', name:'Plant Disease', icon:'🌿', seg:'farm-sayur', segLabel:'🥬 Vegetables',
+      desc:'Detect leaf disease via camera + monitor soil conditions',
+      capabilities:['Detect leaf spots, wilting, yellowing','Identify disease type visually','Monitor soil moisture level','Early alert before spreading to entire field'],
+      requires:{camera:1, sensor:1},
+      sensorTypes:[
+        'Capacitive Soil Moisture — soil water content (%)',
+      ],
+      cameraTypes:['Pi Camera v3 / HQ Camera — high resolution for leaf detail','USB Macro Cam — close-up spot & disease symptom detection'],
+      alertOn:'Leaves show disease symptoms OR soil too dry/wet',
+      config:'confidence, scan_interval, soil_min, soil_max',
+      bestFor:'Vegetable greenhouse, hydroponics, tomato/chili gardens'
+    },
+    { id:'pest_detect', name:'Pest Detector', icon:'🐛', seg:'farm-sayur', segLabel:'🥬 Vegetables',
+      desc:'Detect plant pests via AI visual camera',
+      capabilities:['Detect caterpillars, aphids, thrips, leafhoppers on leaves','Immediate alert for rapid response'],
+      requires:{camera:1, sensor:0},
+      sensorTypes:[],
+      cameraTypes:['Pi HQ Camera + macro lens — ultra-high detail resolution','USB Webcam 1080p — more affordable alternative'],
+      alertOn:'Pest detected in crop area',
+      config:'sensitivity, cooldown',
+      bestFor:'Organic crops where pest response cannot be delayed'
+    },
+    { id:'growth_monitor', name:'Growth Monitor', icon:'📈', seg:'farm-sayur', segLabel:'🥬 Vegetables',
+      desc:'Monitor growth, soil conditions, and greenhouse environment',
+      capabilities:['Measure plant growth from camera','Estimate harvest date','Monitor soil moisture & nutrients','Monitor greenhouse temperature, humidity & light'],
+      requires:{camera:1, sensor:3},
+      sensorTypes:[
+        'Capacitive Soil Moisture — soil water content (%)',
+        'DHT22 — greenhouse air temperature & humidity',
+        'BH1750 — light intensity (lux) for photosynthesis',
+      ],
+      cameraTypes:['Pi Camera v3 — consistent for growth time-lapse','IP Cam Fixed Mount — fixed position for change tracking'],
+      alertOn:'Growth delayed, soil too dry, or insufficient light',
+      config:'expected_growth_rate, soil_min, temp_range, light_min',
+      bestFor:'Greenhouses with strict planting-to-harvest schedules'
+    },
+  ],
+  'farm-buah': [
+    { id:'fruit_disease', name:'Fruit Disease', icon:'🍎', seg:'farm-buah', segLabel:'🍎 Buah',
+      desc:'Detect fruit disease + monitor soil moisture',
+      capabilities:['Detect rot, spots, anthracnose from camera','Monitor soil moisture','Early alert before spreading to entire orchard'],
+      requires:{camera:1, sensor:1},
+      sensorTypes:[
+        'Capacitive Soil Moisture — soil water content (irrigation)',
+      ],
+      cameraTypes:['Pi HQ Camera — high resolution fruit spot detection','USB Webcam 1080p — affordable alternative'],
+      alertOn:'Fruit shows disease signs or soil too dry',
+      config:'confidence, soil_threshold',
+      bestFor:'Mango, citrus, apple, durian orchards'
+    },
+    { id:'harvest_ready', name:'Harvest Ready', icon:'✅', seg:'farm-buah', segLabel:'🍎 Buah',
+      desc:'Detect fruit ripeness from color & size + monitor weather',
+      capabilities:['Analyze fruit color & ripeness from camera','Estimate percentage of harvest-ready fruit','Monitor weather conditions (rain)','Alert when ready for mass harvest'],
+      requires:{camera:1, sensor:1},
+      sensorTypes:[
+        'Rain Sensor — detect rain (delay harvest if raining)',
+      ],
+      cameraTypes:['Pi Camera v3 — accurate fruit color & size analysis','IP Cam Outdoor Weatherproof — orchard weather resistant'],
+      alertOn:'More than X% of fruit is ripe & weather supports harvest',
+      config:'maturity_threshold, rain_delay',
+      bestFor:'Harvest timing optimization for best quality & price'
+    },
+  ],
+  'farm-padi': [
+    { id:'rice_disease', name:'Rice Disease', icon:'🌾', seg:'farm-padi', segLabel:'🌾 Rice',
+      desc:'Detect rice disease via camera + monitor paddy soil conditions',
+      capabilities:['Detect blast, leaf blight, stem rot from camera','Monitor paddy field soil moisture','Early alert before crop failure'],
+      requires:{camera:1, sensor:1},
+      sensorTypes:[
+        'Capacitive Soil Moisture — paddy soil saturation',
+      ],
+      cameraTypes:['IP Cam Outdoor Weatherproof — paddy field rain & heat resistant','Pi Camera v3 + waterproof housing — flexible & water resistant'],
+      alertOn:'Disease symptoms detected OR soil conditions not optimal',
+      config:'confidence, scan_interval, soil_threshold',
+      bestFor:'Paddy fields with history of blast or leaf blight attacks'
+    },
+    { id:'water_monitor', name:'Water Monitor', icon:'💧', seg:'farm-padi', segLabel:'🌾 Rice',
+      desc:'Comprehensive monitoring of paddy irrigation water quality & level',
+      capabilities:['Read paddy water level real-time (HC-SR04)','Monitor water clarity/turbidity','Check irrigation water acidity (pH sensor)','Alert if level, pH, or turbidity out of range'],
+      requires:{camera:0, sensor:3},
+      sensorTypes:[
+        'HC-SR04 — paddy water height/level (cm)',
+        'Turbidity Sensor — irrigation water clarity (NTU)',
+        'pH Sensor — irrigation water acidity (pH 4-9)',
+      ],
+      cameraTypes:[],
+      alertOn:'Water level <X cm, pH outside 5.5-7.0, or water too turbid',
+      config:'min_level, max_level, ph_min, ph_max, turbidity_max',
+      bestFor:'Technical irrigation paddy fields requiring strict water quality monitoring'
+    },
+  ],
+  'cold-storage': [
+    { id:'temp_alert', name:'Temp Alert', icon:'🌡️', seg:'cold-storage', segLabel:'❄️ Cold Storage',
+      desc:'Monitor cold storage temperature & humidity 24 hours nonstop',
+      capabilities:['Monitor precise temperature with DS18B20','Monitor humidity with DHT22','WhatsApp alert if temperature/humidity anomaly','Historical log for audit & compliance','Prevent perishable product damage'],
+      requires:{camera:0, sensor:2},
+      sensorTypes:[
+        'DS18B20 — precision temperature -55°C to 125°C (±0.5°C accuracy)',
+        'DHT22 — relative humidity of cold storage room',
+      ],
+      cameraTypes:[],
+      alertOn:'Temperature out of safe range OR humidity not as configured',
+      config:'temp_min, temp_max, humidity_max, alert_delay',
+      bestFor:'Food, pharmaceutical, vaccine, and perishable cold storage'
+    },
+    { id:'cs_intrusion', name:'Access Control', icon:'🔐', seg:'cold-storage', segLabel:'❄️ Cold Storage',
+      desc:'Monitor & log every cold storage entry via camera + door sensor',
+      capabilities:['Detect person entering from camera','Reed Switch logs door open/close','Alert for access outside operational hours','Full log of who & when they entered'],
+      requires:{camera:1, sensor:1},
+      sensorTypes:[
+        'Reed Switch / Magnetic — cold storage door open/close sensor',
+      ],
+      cameraTypes:['IP Cam Indoor Standard — sufficient resolution for face identification','USB Webcam 1080p — easy to install alternative'],
+      alertOn:'Door opened outside operational hours or unknown person detected',
+      config:'active_hours, cooldown',
+      bestFor:'Cold storage with high-value products (pharmaceuticals, premium meat)'
+    },
+  ],
+}
+
+// Flatten all agents
+let allAgentDefs = []
+Object.values(AGENT_DEFS).forEach(arr => allAgentDefs = allAgentDefs.concat(arr))
+
+// ── SKILL_DEFS — rich metadata for all 16 builtin skills ──────────────────
+const SKILL_DEFS = [
+  // ── Industrial & Machinery ────────────────────────────────────────────────
+  { id:'predictive_maintenance', name:'Predictive Maintenance', icon:'⚙️', category:'industrial',
+    catLabel:'⚙️ Industrial & Machinery',
+    desc:'Monitor machine vibration and temperature in real-time. Detect early anomalies before unexpected failure.',
+    capabilities:['Read vibration level via SW-420/ADXL345','Monitor bearing temperature with temperature sensor','Count anomalies per cycle','Alert before machine failure (predictive)','Relay integration for auto-shutdown'],
+    requires:{camera:0, sensor:2},
+    sensorTypes:['SW-420 / ADXL345 — machine vibration sensor','DS18B20 / NTC Thermistor — bearing & motor temperature'],
+    cameraTypes:[],
+    alertOn:'Anomaly count ≥ threshold OR bearing temperature exceeds safe limit',
+    config:'vibration_pin, temp_max, vib_threshold, sensor_name',
+    bestFor:'Industrial machines, electric motors, pumps, conveyors, generators'
+  },
+  { id:'quality_control', name:'Quality Control', icon:'🔍', category:'industrial',
+    catLabel:'⚙️ Industrial & Machinery',
+    desc:'Visual product inspection on the production line. Detect defects, wrong size, or misaligned products via AI camera.',
+    capabilities:['Detect scratch, crack, missing part from camera','Count defect rate per shift','Automatic snapshot when defect is found','Immediate alert to supervisor','Log all inspection results to database'],
+    requires:{camera:1, sensor:0},
+    sensorTypes:[],
+    cameraTypes:['USB Webcam 1080p — fixed mount above conveyor','IP Cam macro/close-up — detailed surface inspection','Pi HQ Camera + lens — high resolution for high precision'],
+    alertOn:'Product defect detected with confidence ≥ threshold',
+    config:'camera, confidence, defect_types, cooldown',
+    bestFor:'Packaging, electronics, plastic/metal component production lines'
+  },
+  { id:'energy_monitor', name:'Energy Monitor', icon:'⚡', category:'industrial',
+    catLabel:'⚙️ Industrial & Machinery',
+    desc:'Monitor panel/machine power consumption in real-time. Alert if abnormal spike is detected.',
+    capabilities:['Read voltage, current, and active power (Watt)','Monitor cumulative energy (kWh)','Detect abnormal power spikes','Alert if consumption exceeds threshold','Log history for energy audit'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['PZEM-004T — AC power meter (V, A, W, kWh) via UART','ACS712 — DC/AC current sensor via ADC (alternative)'],
+    cameraTypes:[],
+    alertOn:'Active power (W) exceeds configured max_watt',
+    config:'max_watt, sensor_name, cooldown',
+    bestFor:'Industrial power panels, generator monitoring, factory energy audit'
+  },
+
+  // ── Agriculture & AgriTech ────────────────────────────────────────────────
+  { id:'coop_monitor', name:'Coop Monitor', icon:'🌡️', category:'agriculture',
+    catLabel:'🌱 Agriculture & AgriTech',
+    desc:'Monitor coop environment: temperature, humidity, and soil moisture. Alert if thresholds are exceeded.',
+    capabilities:['Read temperature & humidity (DHT22)','Read soil moisture via soil moisture sensor','Alert on temperature, humidity, and dry/wet soil','Log historical sensor data','Simulasi data di Mac untuk development'],
+    requires:{camera:0, sensor:2},
+    sensorTypes:['DHT22 — air temperature & relative humidity','YL-69 / FC-28 — soil moisture (digital output DO)'],
+    cameraTypes:[],
+    alertOn:'Temperature/humidity out of range OR soil too dry',
+    config:'gpio_pin, temp_max, temp_min, hum_max, hum_min, soil_pin, read_interval',
+    bestFor:'Chicken/duck coops, potted plants, greenhouse, small gardens'
+  },
+  { id:'crop_monitor', name:'Crop Monitor', icon:'🌿', category:'agriculture',
+    catLabel:'🌱 Agriculture & AgriTech',
+    desc:'Monitor plant growing environment: temperature, air humidity, and light intensity.',
+    capabilities:['Read temperature & humidity (DHT22)','Read light intensity (BH1750 optional)','Alert if conditions are outside ideal growing range','Log daily environmental trends','Suitable for greenhouse & vertical farming'],
+    requires:{camera:0, sensor:2},
+    sensorTypes:['DHT22 — air temperature & humidity for plants','BH1750 — light intensity (lux) for photosynthesis'],
+    cameraTypes:[],
+    alertOn:'Temperature/humidity outside optimal plant range',
+    config:'gpio_pin, temp_min, temp_max, hum_min, hum_max, sensor_name',
+    bestFor:'Greenhouse, vertical farming, tanaman indoor, hydroponics'
+  },
+  { id:'irrigation_control', name:'Irrigation Control', icon:'💧', category:'agriculture',
+    catLabel:'🌱 Agriculture & AgriTech',
+    desc:'Automate irrigation based on soil moisture. Automatically turn the water pump on/off.',
+    capabilities:['Read soil moisture from capacitive/resistive sensor','Auto-activate pump when soil is dry','Auto-deactivate pump when soil is sufficiently moist','WhatsApp alert if soil stays dry too long','Log daily irrigation time'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['Soil Moisture YL-69 / Kapasitif — kadar air tanah (DO digital)'],
+    cameraTypes:[],
+    alertOn:'Tanah kering lebih dari dry_duration_min menit secara berturutan',
+    config:'soil_pin, pump_relay_id, dry_duration_min, cooldown',
+    bestFor:'Paddy fields, gardens, potted plants, automatic irrigation systems'
+  },
+  { id:'livestock_monitor', name:'Livestock Monitor', icon:'🐄', category:'agriculture',
+    catLabel:'🌱 Agriculture & AgriTech',
+    desc:'Monitor livestock pen conditions: temperature, humidity, and ammonia level. Alert if conditions become dangerous.',
+    capabilities:['Read temperature & humidity (DHT22)','Read ammonia NH3 level (MQ-135)','Multi-parameter alert if thresholds are exceeded','Prevent animal stress & disease outbreaks','Log historical pen conditions'],
+    requires:{camera:0, sensor:2},
+    sensorTypes:['DHT22 — pen air temperature & humidity','MQ-135 — ammonia/NH3 from animal waste'],
+    cameraTypes:[],
+    alertOn:'Temperature, humidity, or ammonia exceeds safe livestock limits',
+    config:'temp_max, hum_max, nh3_max_ppm, sensor_name, cooldown',
+    bestFor:'Chicken, cattle, pig, goat pens — intensive livestock farming'
+  },
+
+  // ── Medical & Health ──────────────────────────────────────────────────────
+  { id:'patient_vitals', name:'Patient Vitals', icon:'❤️', category:'medical',
+    catLabel:'🏥 Medical & Health',
+    desc:'Monitor basic vital signs: SpO2, heart rate, and body temperature. NOT a certified medical device.',
+    capabilities:['Read SpO2 & heart rate (MAX30102 via I2C)','Read infrared body temperature (MLX90614)','Alert if SpO2 is low, HR is abnormal, or fever detected','Per-patient ID for multi-patient setup','Log historical vital signs'],
+    requires:{camera:0, sensor:2},
+    sensorTypes:['MAX30102 — pulse oximeter SpO2 & heart rate (I2C)','MLX90614 — infrared body thermometer (I2C)'],
+    cameraTypes:[],
+    alertOn:'SpO2 < min, HR < min or > max, temperature > temp_max',
+    config:'spo2_min, hr_min, hr_max, temp_max, patient_id, cooldown',
+    bestFor:'Ruang pemulihan, monitoring lansia, klinik kecil, posyandu'
+  },
+  { id:'air_quality', name:'Air Quality', icon:'💨', category:'medical',
+    catLabel:'🏥 Medical & Health',
+    desc:'Monitor kualitas udara dalam ruangan: CO2, VOC, dan partikel halus PM2.5.',
+    capabilities:['Read CO2 ppm (MH-Z19B via UART)','Read VOC ppb (SGP30 optional)','Read PM2.5 & PM10 particles (PMS5003 optional)','Alert if levels are hazardous to health','Automatic ventilation recommendation via actuator'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['MH-Z19B — CO2 sensor 800-5000 ppm via UART','SGP30 — VOC (volatile organic compounds) via I2C','PMS5003 — PM2.5 & PM10 particles via UART'],
+    cameraTypes:[],
+    alertOn:'CO2 > co2_max ppm ATAU PM2.5 > pm25_max µg/m³',
+    config:'co2_max_ppm, pm25_max, location, cooldown',
+    bestFor:'Offices, schools, clinics, server rooms, high-density factories'
+  },
+
+  // ── Smart Home & IoT ──────────────────────────────────────────────────────
+  { id:'smart_home_control', name:'Smart Home Control', icon:'🏠', category:'smart_home',
+    catLabel:'🏠 Smart Home & IoT',
+    desc:'Otomasi rumah pintar berbasis kehadiran: kontrol lampu dan aktuator dari sensor PIR + relay.',
+    capabilities:['Detect motion with PIR HC-SR501','Automatically turn on lights when motion detected','Auto-off after X minutes of no motion','Pluto can be commanded via chat to override','Save energy with schedule + sensor'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['PIR HC-SR501 — sensor gerak/motion (GPIO digital)'],
+    cameraTypes:[],
+    alertOn:'No motion > auto_off_minutes (log only, no alert)',
+    config:'pir_pin, light_relay_id, auto_off_minutes, cooldown',
+    bestFor:'Rumah tinggal, kost, apartemen, kantor kecil'
+  },
+  { id:'flood_detector', name:'Flood Detector', icon:'🌊', category:'smart_home',
+    catLabel:'🏠 Smart Home & IoT',
+    desc:'Detect water leaks or flood pooling. Alert immediately when water is detected.',
+    capabilities:['Detect water contact from water sensor','Immediate WhatsApp alert when water detected','Install at multiple flood-prone points','Short cooldown for repeated alerts','Buzzer integration for local alarm'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['Water / Flood Sensor (DO digital) — detects water contact'],
+    cameraTypes:[],
+    alertOn:'Water detected by water sensor (HIGH signal)',
+    config:'sensor_pin, location, cooldown, buzzer_id',
+    bestFor:'Ruang server, basement, dapur, kamar mandi, gudang'
+  },
+  { id:'fire_smoke_detector', name:'Fire & Smoke Detector', icon:'🔥', category:'smart_home',
+    catLabel:'🏠 Smart Home & IoT',
+    desc:'Detect smoke and LPG/CO gas using MQ-2. Emergency alert + local buzzer.',
+    capabilities:['Detect smoke and LPG gas from MQ-2','Immediately pulse buzzer/alarm on detection','Real-time emergency WhatsApp alert','LLM filter to reduce false alarms','Relay integration for automatic gas shutoff'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['MQ-2 — sensor asap, LPG, H2, dan gas mudah terbakar'],
+    cameraTypes:[],
+    alertOn:'MQ-2 DO HIGH — smoke or gas detected exceeding threshold',
+    config:'sensor_pin, buzzer_id, location, cooldown',
+    bestFor:'Kitchen, fuel warehouse, electrical panel room, factory'
+  },
+
+  // ── Logistics & Supply Chain ──────────────────────────────────────────────
+  { id:'cold_chain_monitor', name:'Cold Chain Monitor', icon:'❄️', category:'logistics',
+    catLabel:'📦 Logistics & Supply Chain',
+    desc:'Monitor temperature and humidity of cold storage 24 hours. Alert immediately if temperature rises.',
+    capabilities:['Read precision temperature (DS18B20 waterproof)','Read humidity (DHT22 optional)','Immediate alert if temperature exits safe range','Historical log for compliance & audit','Multi-sensor support for large cold storage'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['DS18B20 — precision temperature -55°C to 125°C (±0.5°C)','DHT22 — cold storage room humidity (optional)'],
+    cameraTypes:[],
+    alertOn:'Temperature > temp_max OR temperature < temp_min consecutively',
+    config:'temp_max, temp_min, storage_name, cooldown',
+    bestFor:'Cold storage makanan, farmasi, vaksin, daging, produk perishable'
+  },
+  { id:'vehicle_detection', name:'Vehicle Detection', icon:'🚗', category:'logistics',
+    catLabel:'📦 Logistics & Supply Chain',
+    desc:'Detect and count vehicles in parking area or loading dock via camera AI.',
+    capabilities:['Detect and count vehicles from camera','Alert if area capacity is full','Log vehicle entry/exit times','Monitor parking/dock utilization','Supports outdoor weatherproof IP camera'],
+    requires:{camera:1, sensor:0},
+    sensorTypes:[],
+    cameraTypes:['IP Cam Outdoor Weatherproof — heat/rain resistant for parking lots','Wide Angle IP Cam 120°+ — covers entire area at once','IP Cam PTZ — can point at specific vehicles'],
+    alertOn:'Vehicle count > configured max_capacity',
+    config:'camera, max_capacity, confidence, cooldown',
+    bestFor:'Area parkir, loading dock, pintu masuk gudang, gerbang'
+  },
+
+  // ── Security & Surveillance ───────────────────────────────────────────────
+  { id:'ppe_guard', name:'PPE Guard', icon:'⛑️', category:'security',
+    catLabel:'🔒 Security & Surveillance',
+    desc:'Detect workers without PPE (hard hat & safety vest) via camera AI.',
+    capabilities:['Detect missing hard hat','Detect missing safety vest','Count violations per shift','WhatsApp alert + photo snapshot','Terintegrasi YOLOv8 / Hailo NPU'],
+    requires:{camera:1, sensor:0},
+    sensorTypes:[],
+    cameraTypes:['USB Webcam 1080p — indoor, production area','IP Cam WiFi (RTSP) — fixed mount overhead','Hailo-8 NPU + camera — inferensi real-time cepat'],
+    alertOn:'Worker detected without complete PPE (confidence ≥ threshold)',
+    config:'camera, confidence, cooldown_seconds',
+    bestFor:'Area produksi & gudang dengan regulasi K3/safety'
+  },
+  // ── AI Sustainability & Carbon Intelligence ──────────────────────────────
+  { id:'carbon_footprint_monitor', name:'Carbon Footprint Monitor', icon:'🌍', category:'sustainability',
+    catLabel:'🌍 AI Sustainability & Carbon Intelligence',
+    desc:'Calculate real-time carbon emissions from electrical energy consumption. Converts kWh → CO₂e using regional grid emission factors. Alert if daily emissions exceed target.',
+    capabilities:['Convert kWh → kgCO₂e in real-time per interval','6-region emission factor support (Indonesia, EU, US, etc.)','Alert if daily emissions exceed target','Log daily & session carbon budget','Ready for ESG/sustainability report export','Mac simulation mode for development'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['PZEM-004T — power meter AC (V, A, W, kWh) via UART'],
+    cameraTypes:[],
+    alertOn:'CO₂e emissions today > configured daily_co2_target_kg',
+    config:'grid_region, emission_factor, daily_co2_target_kg, location, cooldown',
+    bestFor:'Factories, commercial buildings, data centers, greenhouses targeting net-zero'
+  },
+  { id:'renewable_energy_optimizer', name:'Renewable Energy Optimizer', icon:'☀️', category:'sustainability',
+    catLabel:'🌍 AI Sustainability & Carbon Intelligence',
+    desc:'Monitor solar/wind production and grid consumption. Automatically shift loads to green energy windows to maximize self-consumption and reduce carbon emissions.',
+    capabilities:['Monitor solar/wind production real-time (DC meter)','Monitor AC grid consumption (PZEM-004T)','Auto-switch secondary loads during solar surplus','Calculate daily self-consumption ratio','Log solar vs grid kWh comparison','Alert when self-consumption ratio is low'],
+    requires:{camera:0, sensor:2},
+    sensorTypes:['INA219 / PZEM-017 — DC power meter output solar panel','PZEM-004T — AC power meter grid consumption'],
+    cameraTypes:[],
+    alertOn:'Self-consumption ratio < 30% — sebagian besar energi masih dari grid',
+    config:'surplus_relay_id, surplus_watt, location, cooldown',
+    bestFor:'Solar homes, greenhouse, factories with solar panels, off-grid systems'
+  },
+  { id:'emission_sensor_monitor', name:'Emission Sensor Monitor', icon:'🏭', category:'sustainability',
+    catLabel:'🌍 AI Sustainability & Carbon Intelligence',
+    desc:'Monitor industrial gas emissions in real-time: CO₂, CH₄ (methane), NOx for environmental compliance and occupational safety.',
+    capabilities:['Monitor CO₂ ppm via MH-Z19B (UART)','Monitor CH₄/methane via MQ-4','Monitor NOx & SO₂ (electrochemical sensor optional)','Multi-gas alert if compliance threshold exceeded','Log emission data for environmental audit','References OSHA, NIOSH, and air quality standards'],
+    requires:{camera:0, sensor:2},
+    sensorTypes:['MH-Z19B — industrial CO₂ sensor 0–5000 ppm via UART','MQ-4 — CH₄ methane sensor (GPIO digital output)'],
+    cameraTypes:[],
+    alertOn:'CO₂ > 5000ppm OR CH₄ > 1000ppm OR NOx > 3ppm (configurable)',
+    config:'co2_max_ppm, ch4_max_ppm, nox_max_ppm, location, cooldown',
+    bestFor:'Factories, large farms, landfills, chemical industry, power plants'
+  },
+  { id:'water_footprint_monitor', name:'Water Footprint Monitor', icon:'💧', category:'sustainability',
+    catLabel:'🌍 AI Sustainability & Carbon Intelligence',
+    desc:'Monitor water consumption per process and calculate water footprint (liters/day). Alert if daily target exceeded. Data ready for ESG reporting.',
+    capabilities:['Read real-time flow rate from YF-S201 (liters/min)','Accumulate daily & per-session consumption','Calculate water footprint (L/day, m³/day)','Alert if daily consumption target is exceeded','Automatic reset at midnight','Log for sustainability/ESG reporting'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['YF-S201 — water flow sensor (pulse → GPIO, 1 pulse ≈ 2.25 mL)'],
+    cameraTypes:[],
+    alertOn:'Water consumption today > configured daily_limit_liter',
+    config:'flow_pin, ml_per_pulse, daily_limit_liter, process_name, cooldown',
+    bestFor:'Beverage factory, farming, hotel, industrial laundry, ESG reporting'
+  },
+  { id:'smart_grid_scheduler', name:'Smart Grid Scheduler', icon:'⚡', category:'sustainability',
+    catLabel:'🌍 AI Sustainability & Carbon Intelligence',
+    desc:'Automatic demand response: shift large loads to low-carbon / cheap-tariff grid hours. Reduce carbon intensity and electricity bills simultaneously.',
+    capabilities:['Define "green windows" for low-carbon/cheap-tariff hours','Auto-on deferrable loads during green window','Auto-off non-essential loads outside green window','Alert if peak demand exceeds limit','Default Indonesia PLN off-peak: 22:00–06:00 & 10:00–14:00','Multiple relay support for load staggering'],
+    requires:{camera:0, sensor:1},
+    sensorTypes:['PZEM-004T — active power consumption monitor (W) via UART'],
+    cameraTypes:[],
+    alertOn:'Peak consumption > peak_watt_limit outside green window',
+    config:'green_windows, deferrable_relay_ids, peak_watt_limit, location, cooldown',
+    bestFor:'Pabrik, cold storage, data center, gedung komersial dengan target ESG'
+  },
+
+  { id:'intrusion', name:'Intrusion Alert', icon:'🚨', category:'security',
+    catLabel:'🔒 Security & Surveillance',
+    desc:'Detect intruders outside operational hours via camera + optional PIR sensor.',
+    capabilities:['Detect people outside working hours','Freely configure active hours (e.g. 22:00–05:00)','Real-time WhatsApp alert','PIR as secondary trigger','Snapshot on detection'],
+    requires:{camera:1, sensor:1},
+    sensorTypes:['PIR HC-SR501 — motion detection at entry area'],
+    cameraTypes:['IP Cam Night Vision IR — required for night use','CCTV Outdoor Weatherproof — weather & dust resistant'],
+    alertOn:'Person detected outside configured active_hours',
+    config:'camera, active_hours, confidence, cooldown_seconds',
+    bestFor:'Keamanan gudang malam hari, kantor, cold storage tanpa satpam 24 jam'
+  },
+]
+
+// Lookup map by id
+const SKILL_DEF_MAP = {}
+SKILL_DEFS.forEach(s => SKILL_DEF_MAP[s.id] = s)
+
+// Active skill filter state
+let _currentSkillCat = 'all'
+
+// Active agents (from backend)
+let activeAgents = {}
+// Last status snapshot (for actual camera/sensor counts)
+let _lastStatus = null
+// Agent IDs yang sudah ada Python implementation-nya
+let _registeredAgents = new Set()
+
+// ── Navigation ─────────────────────────────────────────
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'))
+  const page = document.getElementById('page-' + name)
+  if(!page) return
+  page.classList.add('active')
+  if(el) el.classList.add('active')
+  document.getElementById('pageTitle').textContent = {
+    dashboard: 'Dashboard',
+    pluto:     'Pluto AI',
+    skills:    'Skills',
+    cameras:   'Cameras',
+    sensors:   'Sensors & Actuators',
+    whatsapp:  'WhatsApp',
+    setup:     'Setup & Health',
+    logs:      'System Log',
+    // backward compat
+    agents:    'Skills',
+  }[name] || name
+  state.currentPage = name
+
+  if(name === 'skills' || name === 'agents') {
+    _refreshStatus().then(() => renderSkillGrid())
+  }
+  if(name === 'pluto') loadPlutoPage()
+  if(name === 'cameras') renderAllCameras()
+  if(name === 'sensors') { loadSensors(); loadActuators() }
+  if(name === 'whatsapp') renderWAPage()
+  if(name === 'setup') renderDoctor()
+  if(name === 'logs') { updateLogAgentFilter(); loadLogs() }
+
+  if(window.innerWidth <= 768) closeSidebar()
+}
+
+function loadPlutoPage() {
+  // Refresh automation status saat buka halaman Pluto
+  api('/api/status').then(data => {
+    if(!data) return
+    const auto = data.automation || {}
+    const pill = document.getElementById('autoModePill2')
+    const last = document.getElementById('autoLastCheck')
+    const act  = document.getElementById('autoLastAction')
+    if(pill) {
+      pill.textContent = auto.running ? 'AKTIF' : 'NONAKTIF'
+      pill.style.background = auto.running ? '#14532d' : '#3f1212'
+      pill.style.color = auto.running ? '#22c55e' : '#ef4444'
+    }
+    if(last) last.textContent = auto.last_check || '—'
+    if(act)  act.textContent  = auto.last_action ? JSON.stringify(auto.last_action) : '—'
+  })
+}
+
+// ── Clock ──────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('id-ID')
+}, 1000)
+
+// ── API helpers ────────────────────────────────────────
+async function api(path, opts = {}) {
+  try {
+    const r = await fetch(path, opts)
+    return await r.json()
+  } catch { return null }
+}
+
+// ── Dashboard refresh ──────────────────────────────────
+async function refreshDashboard() {
+  const data = await api('/api/status')
+  if(!data) return
+  _lastStatus = data  // save for renderAgents
+
+  document.getElementById('deviceChip').textContent = data.device
+  document.getElementById('envLabel').textContent = (data.environment||'').toUpperCase()
+
+  // Stats
+  const running = data.agents.filter(a => a.status === 'running').length
+  const camOn = data.cameras.filter(c => c.connected).length
+  const sensors = data.sensors || []
+  const senOn = sensors.filter(s => s.enabled && s.reading?.status === 'ok').length
+  document.getElementById('s-agents').textContent = running
+  document.getElementById('s-agents-total').textContent = data.agents.length
+  document.getElementById('agentBadge').textContent = running
+  document.getElementById('s-cams').textContent = camOn
+  document.getElementById('s-cams-sub').textContent = `dari ${data.cameras.length} konfigurasi`
+  document.getElementById('s-sensors').textContent = senOn
+  document.getElementById('s-sensors-sub').textContent = `${sensors.length} terkonfigurasi`
+  document.getElementById('s-today').textContent = data.stats.today_events || 0
+  document.getElementById('s-total').textContent = data.stats.total_alerts || 0
+
+  // ── System Status Bar ───────────────────────────────
+  const cap = data.capacity || {}
+  const env = data.environment || 'unknown'
+
+  // Platform pill
+  const pp = document.getElementById('pill-platform')
+  const ppv = document.getElementById('pill-platform-val')
+  if(pp && ppv) {
+    ppv.textContent = cap.device_type || env.toUpperCase()
+    pp.className = 'sys-pill neutral'
+  }
+
+  // Ollama pill
+  const op = document.getElementById('pill-ollama')
+  const opd = document.getElementById('pill-ollama-dot')
+  const opv = document.getElementById('pill-ollama-val')
+  if(op && opd && opv) {
+    opd.style.background = data.ollama ? 'var(--green)' : 'var(--red)'
+    opd.style.boxShadow = data.ollama ? '0 0 5px var(--green)' : 'none'
+    opv.textContent = data.ollama ? (data.ollama_model || 'Online') : 'Offline'
+    op.className = data.ollama ? 'sys-pill ok' : 'sys-pill off'
+  }
+
+  // WA pill
+  const wp = document.getElementById('pill-wa')
+  const wpd = document.getElementById('pill-wa-dot')
+  const wpv = document.getElementById('pill-wa-val')
+  if(wp && wpd && wpv) {
+    const waOk = data.wa_bridge || false
+    wpd.style.background = waOk ? 'var(--green)' : 'var(--text-muted)'
+    wpd.style.boxShadow = waOk ? '0 0 5px var(--green)' : 'none'
+    wpv.textContent = waOk ? 'Connected' : 'Offline'
+    wp.className = waOk ? 'sys-pill ok' : 'sys-pill off'
+  }
+
+  // Hailo pill
+  const hp = document.getElementById('pill-hailo')
+  const hpv = document.getElementById('pill-hailo-val')
+  if(hp && hpv) {
+    hpv.textContent = data.hailo ? 'Online' : 'N/A'
+    hp.className = data.hailo ? 'sys-pill ok' : 'sys-pill neutral'
+  }
+
+  // Capacity mini bars (dashboard)
+  const maxCam = cap.max_cameras || 1
+  const maxSen = cap.max_sensors || 0
+  const camPct = Math.round((data.cameras.length / maxCam) * 100)
+  const senPct = maxSen > 0 ? Math.round((sensors.length / maxSen) * 100) : 0
+  const cb = document.getElementById('cap-cam-bar')
+  const sb = document.getElementById('cap-sen-bar')
+  const ct = document.getElementById('cap-cam-text')
+  const st = document.getElementById('cap-sen-text')
+  const dl = document.getElementById('cap-device-label')
+  if(cb) cb.style.width = Math.min(camPct,100) + '%'
+  if(sb) sb.style.width = Math.min(senPct,100) + '%'
+  if(ct) ct.textContent = `${data.cameras.length}/${maxCam}`
+  if(st) st.textContent = `${sensors.length}/${maxSen}`
+  if(dl) dl.textContent = cap.device_type || env
+
+  // Camera mini
+  const camPrev = document.getElementById('camPreview')
+  const totalCams = data.cameras.length
+  document.getElementById('camCount').textContent = `${camOn}/${totalCams} online`
+  if(totalCams === 0) {
+    camPrev.innerHTML = '<div style="padding:30px;color:var(--text-muted);font-size:0.78rem;text-align:center;grid-column:1/-1">📵 No cameras configured</div>'
+  } else {
+    camPrev.innerHTML = data.cameras.map(c => `
+      <div class="cam-item">
+        <div class="cam-title">${c.name} ${c.connected ? '<span class="live-badge">LIVE</span>' : ''}</div>
+        <div class="cam-body">
+          ${c.connected
+            ? `<img src="/stream/${c.id}" onerror="this.style.display='none'">`
+            : `<div class="cam-offline">📵 Not Connected<br><small style="color:var(--text-muted)">${c.error||''}</small></div>`}
+        </div>
+      </div>`).join('')
+  }
+
+  // Skills mini list
+  const agentMini = document.getElementById('agentMiniList')
+  activeAgents = {}
+  const skillsData = data.skills || data.agents || []
+  skillsData.forEach(a => { activeAgents[a.instance_key || a.name] = a })
+  if(skillsData.length === 0) {
+    agentMini.innerHTML = '<div style="color:var(--text-muted);font-size:0.78rem">No active skills</div>'
+  } else {
+    agentMini.innerHTML = skillsData.map(a => {
+      const running = a.status === 'running'
+      const last = a.last_reading || {}
+      let sensorLine = ''
+      if(last.temperature) sensorLine += `🌡️ ${last.temperature}°C `
+      if(last.humidity)    sensorLine += `💧 ${last.humidity}% `
+      if(last.soil_dry !== undefined) sensorLine += last.soil_dry ? '🌱 Kering' : '🌱 OK'
+      return `
+      <div onclick="showPage('skills',document.querySelector('[onclick*=skills]'))" style="cursor:pointer;background:var(--bg3);border:1px solid ${running?'rgba(0,200,200,0.3)':'var(--border)'};border-radius:8px;padding:10px 14px;font-size:0.75rem;min-width:140px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <div class="dot" style="background:${running?'var(--green)':'var(--text-muted)'};width:6px;height:6px;flex-shrink:0"></div>
+          <span style="color:${running?'var(--teal)':'var(--text-dim)'};font-weight:600">${a.name || a.agent_type}</span>
+        </div>
+        <div style="color:var(--text-muted)">${sensorLine || `Events: ${a.event_count||a.detections||0} · Alerts: ${a.alert_count||a.alerts||0}`}</div>
+      </div>`
+    }).join('')
+  }
+
+  // Automation status di dashboard
+  const auto = data.automation || {}
+  const autoPill = document.getElementById('autoStatusPill')
+  const autoDesc = document.getElementById('autoStatusDesc')
+  if(autoPill) {
+    autoPill.textContent = auto.running ? 'ON' : 'OFF'
+    autoPill.style.background = auto.running ? '#14532d' : '#3f1212'
+    autoPill.style.color = auto.running ? '#22c55e' : '#ef4444'
+  }
+  if(autoDesc && auto.last_check) {
+    autoDesc.textContent = `Pluto monitors system conditions every ${auto.interval||60}s. Last check: ${auto.last_check}`
+  }
+
+  // Skills category page
+  renderSkillCategories(data.skill_categories, skillsData)
+
+  // Ollama indicator
+  const ollamaColor = data.ollama ? 'var(--green)' : 'var(--red)'
+  document.getElementById('ollamaIndicator').style.background = ollamaColor
+  const ol2 = document.getElementById('ollamaIndicator2')
+  if(ol2) ol2.style.background = ollamaColor
+
+  // WA indicator
+  state.waConnected = data.wa_bridge || false
+  const waColor = state.waConnected ? 'var(--green)' : 'var(--text-muted)'
+  const waShadow = state.waConnected ? '0 0 6px var(--green)' : 'none'
+  ;['waIndicator','waIndicator2'].forEach(id => {
+    const el = document.getElementById(id)
+    if(el) { el.style.background = waColor; el.style.boxShadow = waShadow }
+  })
+
+  // WA page dot
+  const waDot = document.getElementById('waDot')
+  const waText = document.getElementById('waStatusText')
+  if(waDot && waText) {
+    waDot.style.background = state.waConnected ? 'var(--green)' : 'var(--red)'
+    waText.textContent = state.waConnected ? '✅ WhatsApp Connected' : 'Not connected'
+    waText.style.color = state.waConnected ? 'var(--green)' : 'var(--text-dim)'
+  }
+}
+
+// ── Alert log ──────────────────────────────────────────
+const iconMap = { ppe_violation:'⛑️', intrusion:'🚨', forklift_danger:'🚧', sick_animal:'🐾', sensor:'📡', default:'🔔' }
+const tagMap = { ppe_violation:'ppe', intrusion:'intrusion', sick_animal:'sick', sensor:'sensor' }
+const tagLabel = { ppe_violation:'APD', intrusion:'INTRUSI', sick_animal:'HEWAN', sensor:'SENSOR' }
+
+async function refreshAlerts() {
+  const events = await api('/api/events?limit=25')
+  if(!events) return
+  const list = document.getElementById('alertList')
+  if(events.length === 0) {
+    list.innerHTML = '<div class="alert-empty">✓ No alerts — all clear</div>'
+    return
+  }
+  list.innerHTML = events.map(e => {
+    const icon = iconMap[e.event_type] || iconMap.default
+    const tag = tagMap[e.event_type]
+    const ts = e.timestamp ? new Date(e.timestamp).toLocaleString('id-ID') : '-'
+    return `<div class="alert-item">
+      <div class="alert-icon">${icon}</div>
+      <div class="alert-body">
+        <div class="alert-msg">${e.message || e.event_type}${tag?`<span class="alert-tag ${tag}">${tagLabel[e.event_type]}</span>`:''}</div>
+        <div class="alert-meta">${e.agent} · ${e.location||'-'} · ${ts}</div>
+      </div>
+    </div>`
+  }).join('')
+}
+
+// ── Agent page ─────────────────────────────────────────
+let currentSegFilter = 'all'
+// ── Skill Registry Renderer ────────────────────────────────────────────────
+const SKILL_CAT_META = {
+  industrial:  { icon:'⚙️', label:'Industrial & Machinery',   desc:'Predictive maintenance, anomaly detection, quality control.' },
+  agriculture: { icon:'🌱', label:'Agriculture & AgriTech',   desc:'Smart sensor agents, crop monitoring, irrigation automation.' },
+  medical:     { icon:'🏥', label:'Medical & Health',         desc:'On-device diagnostics, patient monitoring, clinical edge tools.' },
+  smart_home:  { icon:'🏠', label:'Smart Home & IoT',         desc:'Local AI assistants, home automation, context-aware control.' },
+  logistics:   { icon:'📦', label:'Logistics & Supply Chain', desc:'Cold chain monitoring, vehicle detection, warehouse automation.' },
+  security:       { icon:'🔒', label:'Security & Surveillance',              desc:'Intrusion detection, PPE compliance, access control.' },
+  sustainability: { icon:'🌍', label:'AI Sustainability & Carbon Intelligence', desc:'Real-time carbon footprint, renewable optimization, emission compliance, water footprint, smart grid.' },
+}
+
+function setSkillCat(cat, btn) {
+  _currentSkillCat = cat
+  document.querySelectorAll('#skillFilterBar button').forEach(b => b.className = 'btn btn-outline btn-sm')
+  btn.className = 'btn btn-teal btn-sm'
+
+  const header = document.getElementById('skillCatHeader')
+  if (cat === 'all') {
+    header.style.display = 'none'
+  } else {
+    const m = SKILL_CAT_META[cat] || {}
+    header.style.display = 'block'
+    header.innerHTML = `<span style="font-size:1.1rem;margin-right:8px">${m.icon||''}</span>
+      <strong style="color:var(--text)">${m.label||cat}</strong>
+      <span style="font-size:0.72rem;color:var(--text-dim);margin-left:8px">${m.desc||''}</span>`
+  }
+  renderSkillGrid()
+}
+
+function renderSkillGrid() {
+  const grid   = document.getElementById('skillGrid')
+  if (!grid) return
+
+  const query  = (document.getElementById('skillSearch')?.value || '').toLowerCase().trim()
+  const cat    = _currentSkillCat
+
+  // Build active-skill lookup from last status
+  const activeMap = {}
+  ;(_lastStatus?.skills || _lastStatus?.agents || []).forEach(s => {
+    activeMap[s.name || s.instance_key] = s
+  })
+
+  const filtered = SKILL_DEFS.filter(def => {
+    if (cat !== 'all' && def.category !== cat) return false
+    if (!query) return true
+    const haystack = [def.name, def.desc, def.category, ...(def.sensorTypes||[]), ...(def.cameraTypes||[]), def.bestFor||''].join(' ').toLowerCase()
+    return haystack.includes(query)
+  })
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;padding:24px;grid-column:1/-1;text-align:center">No matching skills found</div>'
+    return
+  }
+
+  const actualCams = Math.max(2, _lastStatus?.cameras?.length || 2)
+  const actualSens = _lastStatus?.sensors?.length || 0
+
+  grid.innerHTML = filtered.map(def => {
+    const active     = activeMap[def.id]
+    const isRunning  = active?.status === 'running'
+    const events     = active?.events || 0
+    const alerts     = active?.alerts || 0
+    const isRec      = _recommendedAgents.has(def.id)
+    const camNeeded  = def.requires?.camera > 0
+    const senNeeded  = def.requires?.sensor > 0
+    const showCam    = camNeeded ? actualCams : 0
+    const showSen    = senNeeded ? actualSens : 0
+    const catM       = SKILL_CAT_META[def.category] || {}
+
+    let statusBadge, statusColor
+    if (isRunning) { statusBadge = '● RUNNING';   statusColor = 'var(--green)' }
+    else           { statusBadge = '○ AVAILABLE'; statusColor = 'var(--text-muted)' }
+
+    return `
+    <div class="agent-card ${isRunning?'on':''} ${isRec?'recommended':''}" id="scard-${def.id}">
+      <div class="agent-head">
+        <div class="agent-icon">${def.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div class="agent-name">${def.name}${isRec?'<span class="rec-badge">✨ Rekomendasi</span>':''}</div>
+          <div class="agent-seg">${catM.icon||''} ${catM.label||def.category}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:0.62rem;font-weight:700;color:${statusColor};white-space:nowrap">${statusBadge}</div>
+        </div>
+      </div>
+      <div class="agent-body">
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:10px">${def.desc}</div>
+        <div class="agent-stats">
+          <div class="agent-stat"><strong>${events}</strong>Events</div>
+          <div class="agent-stat"><strong>${alerts}</strong>Alerts</div>
+          <div class="agent-stat">
+            <strong style="color:${camNeeded?'var(--teal)':'var(--text-muted)'}">${showCam}</strong>Camera
+          </div>
+          <div class="agent-stat">
+            <strong style="color:${senNeeded?'#a855f7':'var(--text-muted)'}">${showSen}</strong>Sensor
+          </div>
+        </div>
+        <button class="btn btn-outline btn-sm" style="width:100%;margin-top:8px;font-size:0.7rem"
+          onclick="openSkillModal('${def.id}')">
+          ${isRunning ? '📋 Manage Skill' : '📋 View Details'}
+        </button>
+      </div>
+    </div>`
+  }).join('')
+}
+
+// ── Skill Detail Modal ─────────────────────────────────────────────────────
+function openSkillModal(id) {
+  const def = SKILL_DEF_MAP[id]
+  if (!def) return
+
+  const active      = (_lastStatus?.skills || _lastStatus?.agents || []).find(s => (s.name || s.instance_key) === id)
+  const isRunning   = active?.status === 'running'
+  const actualCams  = Math.max(2, _lastStatus?.cameras?.length || 2)
+  const actualSens  = _lastStatus?.sensors?.length || 0
+  const camNeeded   = def.requires?.camera > 0
+  const senNeeded   = def.requires?.sensor > 0
+
+  // Sensor chips
+  const sensorChips = (def.sensorTypes||[]).map(s => `<span class="req-chip sensor-type">📡 ${s}</span>`).join('')
+  const senSection  = def.sensorTypes?.length
+    ? `<div class="req-chip ${senNeeded?'needed':''}">📡 ${actualSens} Sensor GPIO</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${sensorChips}</div>`
+    : `<span class="req-chip">📡 No sensor required</span>`
+
+  // Camera chips
+  const camChips   = (def.cameraTypes||[]).map(c => `<span class="req-chip cam-type">📷 ${c}</span>`).join('')
+  const camSection = def.cameraTypes?.length
+    ? `<div class="req-chip ${camNeeded?'needed':''}">📹 ${actualCams} Camera(s)</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${camChips}</div>`
+    : `<span class="req-chip">📹 No camera required</span>`
+
+  const statusHtml = isRunning
+    ? `<span class="agent-modal-status" style="color:var(--green)">● RUNNING</span>`
+    : `<span class="agent-modal-status" style="color:var(--text-muted)">○ AVAILABLE</span>`
+
+  // Running block
+  let runningBlock = ''
+  if (isRunning && active) {
+    const lr = active.last_reading || {}
+    const readings = Object.entries(lr).map(([k,v]) =>
+      `<div style="font-size:0.7rem;color:var(--text-dim)">${k}: <strong style="color:var(--teal)">${v}</strong></div>`
+    ).join('')
+    runningBlock = `
+      <div class="detail-section">
+        <div class="detail-title" style="margin-bottom:8px">🟢 Current Status</div>
+        <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);border-radius:7px;padding:10px 12px">
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">
+            <div style="font-size:0.7rem;color:var(--text-dim)">Events: <strong style="color:var(--text)">${active.events||0}</strong></div>
+            <div style="font-size:0.7rem;color:var(--text-dim)">Alerts: <strong style="color:var(--text)">${active.alerts||0}</strong></div>
+            <div style="font-size:0.7rem;color:var(--text-dim)">Status: <strong style="color:var(--green)">${active.status}</strong></div>
+          </div>
+          ${readings ? `<div style="display:flex;gap:12px;flex-wrap:wrap">${readings}</div>` : ''}
+          <button class="btn btn-sm" style="margin-top:10px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.35);
+            color:#f87171;font-size:0.72rem;padding:5px 14px"
+            onclick="skillStop('${id}')">⏹ Stop Skill</button>
+        </div>
+      </div>`
+  }
+
+  // Start/stop block
+  const actionBlock = isRunning ? '' : `
+    <button class="btn btn-teal btn-sm" id="modal-start-btn" style="width:100%;padding:10px;font-size:0.82rem;font-weight:700"
+      onclick="skillStart('${id}')">▶ Activate Skill</button>`
+
+  document.getElementById('modal-icon').textContent = def.icon
+  document.getElementById('modal-name').textContent = def.name
+  document.getElementById('modal-seg').textContent  = (SKILL_CAT_META[def.category]?.icon||'') + ' ' + (SKILL_CAT_META[def.category]?.label||def.category)
+  document.getElementById('modal-status').innerHTML = statusHtml
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-title">Capabilities</div>
+      <div class="detail-caps">
+        ${(def.capabilities||[]).map(c=>`<div class="detail-cap">${c}</div>`).join('')}
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title">Hardware Requirements</div>
+      <div class="detail-requires" style="flex-direction:column;gap:8px">
+        <div>
+          <div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.8px">📹 Cameras</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${camSection}</div>
+        </div>
+        <div>
+          <div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.8px">📡 Sensors</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${senSection}</div>
+        </div>
+      </div>
+    </div>
+    ${runningBlock}
+    <div class="detail-section">
+      <div class="detail-title">Alert Condition</div>
+      <div class="detail-alert-box">⚠ ${def.alertOn||'-'}</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title">Configuration Parameters</div>
+      <div class="detail-config-box">${def.config||'-'}</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title">Best For</div>
+      <div class="detail-best">💡 ${def.bestFor||'-'}</div>
+    </div>
+    <div class="detail-section" style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+      <div class="detail-title" style="margin-bottom:10px">${isRunning?'⚙️ Manage':'▶ Activate'} Skill</div>
+      ${actionBlock}
+    </div>
+  `
+
+  document.getElementById('agentModal').classList.add('open')
+}
+
+async function skillStart(skillId) {
+  const btn = document.getElementById('modal-start-btn')
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Memproses...' }
+  try {
+    const res = await api('/api/pluto/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ message: `start skill ${skillId}` })
+    })
+    await _refreshStatus()
+    openSkillModal(skillId)
+    renderSkillGrid()
+    _showToast(res?.action_result?.msg || `✅ Skill ${skillId} diaktifkan`)
+  } catch(e) {
+    _showToast(`❌ Error: ${e.message}`, 'error')
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Activate Skill' }
+  }
+}
+
+async function skillStop(skillId) {
+  try {
+    const res = await api('/api/pluto/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ message: `stop skill ${skillId}` })
+    })
+    await _refreshStatus()
+    openSkillModal(skillId)
+    renderSkillGrid()
+    _showToast(res?.action_result?.msg || `⏹ Skill ${skillId} dihentikan`)
+  } catch(e) { _showToast(`❌ Error: ${e.message}`, 'error') }
+}
+
+// Also update renderSkillGrid when status refreshes
+function renderSkillCategories(categories, activeSkills) {
+  // Called from refreshDashboard — just re-render the grid if Skills page is open
+  if (document.getElementById('skillGrid')) renderSkillGrid()
+}
+
+function filterSeg(seg, btn) {
+  currentSegFilter = seg
+  document.querySelectorAll('#segFilter button').forEach(b => b.className = 'btn btn-outline btn-sm')
+  btn.className = 'btn btn-teal btn-sm'
+  renderAgents(seg)
+}
+
+// Set of recommended agent IDs dari Pluto AI
+let _recommendedAgents = new Set()
+
+function renderAgents(seg) {
+  const defs = seg === 'all' ? allAgentDefs : (AGENT_DEFS[seg] || [])
+  const grid = document.getElementById('agentGrid')
+  if(defs.length === 0) {
+    grid.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;padding:20px">No agents in this segment</div>'
+    return
+  }
+
+  // Actual hardware counts from last status refresh
+  const actualCams = Math.max(2, _lastStatus?.cameras?.length || 2)
+  const actualSens = _lastStatus?.sensors?.length || 0
+
+  grid.innerHTML = defs.map(def => {
+    // Count all running instances for this agent type
+    const instances  = getRunningInstances(def.id)
+    const numRunning = instances.length
+    const isRunning  = numRunning > 0
+
+    // Aggregat stats semua instance
+    const totalDet   = instances.reduce((s,a) => s + (a.detections||0), 0)
+    const totalAlert = instances.reduce((s,a) => s + (a.alerts||0), 0)
+
+    const isRec     = _recommendedAgents.has(def.id)
+    const camNeeded = def.requires?.camera > 0
+    const senNeeded = def.requires?.sensor > 0
+    const showCam   = camNeeded ? actualCams : 0
+    const showSen   = senNeeded ? actualSens : 0
+
+    // Badge: "● 3 AKTIF" jika stacked, "● RUNNING" jika 1, "○ AVAILABLE" jika 0
+    let statusBadge, statusColor
+    if(numRunning > 1)    { statusBadge = `● ${numRunning} AKTIF`; statusColor = 'var(--green)' }
+    else if(numRunning===1){ statusBadge = '● RUNNING';            statusColor = 'var(--green)' }
+    else                  { statusBadge = '○ AVAILABLE';           statusColor = 'var(--text-muted)' }
+
+    // Mini camera list di bawah badge jika stacked
+    const camLabels = isRunning ? instances.map(inst => {
+      const cn = (_lastStatus?.cameras||[]).find(c => c.id === inst.camera_id)?.name || inst.camera_id
+      return `<span style="font-size:0.6rem;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.25);
+        border-radius:4px;padding:1px 6px;color:var(--green)">${cn||inst.camera_id}</span>`
+    }).join('') : ''
+
+    return `
+    <div class="agent-card ${isRunning?'on':''} ${isRec?'recommended':''}" id="acard-${def.id}">
+      <div class="agent-head">
+        <div class="agent-icon">${def.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div class="agent-name">${def.name}${isRec?'<span class="rec-badge">✨ Rekomendasi</span>':''}</div>
+          <div class="agent-seg">${def.segLabel}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:0.62rem;font-weight:700;color:${statusColor};white-space:nowrap">${statusBadge}</div>
+          ${camLabels ? `<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;margin-top:3px">${camLabels}</div>` : ''}
+        </div>
+      </div>
+      <div class="agent-body">
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:10px">${def.desc}</div>
+        <div class="agent-stats">
+          <div class="agent-stat"><strong>${totalDet}</strong>Detections</div>
+          <div class="agent-stat"><strong>${totalAlert}</strong>Alert</div>
+          <div class="agent-stat">
+            <strong style="color:${camNeeded?'var(--teal)':'var(--text-muted)'}">${showCam}</strong>Camera
+          </div>
+          <div class="agent-stat">
+            <strong style="color:${senNeeded?'#a855f7':'var(--text-muted)'}">${showSen}</strong>Sensor
+          </div>
+        </div>
+        <button class="btn btn-outline btn-sm" style="width:100%;margin-top:8px;font-size:0.7rem"
+          onclick="openAgentModal('${def.id}')">
+          ${isRunning ? `📋 Kelola (${numRunning} instance)` : '📋 View Details Agent'}
+        </button>
+      </div>
+    </div>`
+  }).join('')
+}
+
+// ── Agent Detail Modal ─────────────────────────────────
+// ── Helpers: cari semua instance running untuk agent_type tertentu ──────────
+function getRunningInstances(agentType) {
+  // activeAgents key = instance_key = "type__cam_id"
+  return Object.values(activeAgents).filter(a => a.agent_type === agentType)
+}
+
+function openAgentModal(id) {
+  // Find def
+  let def = null
+  for(const arr of Object.values(AGENT_DEFS)) {
+    const found = arr.find(d => d.id === id)
+    if(found) { def = found; break }
+  }
+  if(!def) return
+
+  // Semua instance running untuk agent type ini
+  const runningInstances = getRunningInstances(id)
+  const hasAnyRunning    = runningInstances.length > 0
+
+  const camNeeded  = def.requires?.camera > 0
+  const senNeeded  = def.requires?.sensor > 0
+  const actualCams = Math.max(2, _lastStatus?.cameras?.length || 2)
+  const actualSens = _lastStatus?.sensors?.length || 0
+
+  // Sensor type chips
+  const sensorChips = (def.sensorTypes || []).map(s =>
+    `<span class="req-chip sensor-type">📡 ${s}</span>`
+  ).join('')
+  const senSection = def.sensorTypes?.length
+    ? `<div class="req-chip ${senNeeded?'needed':''}">📡 ${actualSens||0} Sensor GPIO</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${sensorChips}</div>`
+    : `<span class="req-chip ${senNeeded?'needed':''}">📡 ${actualSens||0} Sensor GPIO</span>`
+
+  // Camera type chips
+  const camChips = (def.cameraTypes || []).map(c =>
+    `<span class="req-chip cam-type">📷 ${c}</span>`
+  ).join('')
+  const camSection = def.cameraTypes?.length
+    ? `<div class="req-chip ${camNeeded?'needed':''}">📹 ${actualCams} Camera(s)</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${camChips}</div>`
+    : `<span class="req-chip ${camNeeded?'needed':''}">📹 ${actualCams} Camera(s)</span>`
+
+  // Status header chip
+  const statusHtml = hasAnyRunning
+    ? `<span class="agent-modal-status" style="color:var(--green)">● ${runningInstances.length} AKTIF</span>`
+    : `<span class="agent-modal-status" style="color:var(--text-muted)">○ AVAILABLE</span>`
+
+  // ── Running instances table ──
+  let runningBlock = ''
+  if (runningInstances.length > 0) {
+    const rows = runningInstances.map(inst => {
+      const camName = (_lastStatus?.cameras||[]).find(c => c.id === inst.camera_id)?.name || inst.camera_id
+      return `<div style="display:flex;align-items:center;justify-content:space-between;
+                padding:8px 10px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);
+                border-radius:7px;margin-bottom:6px;gap:8px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:0.77rem;font-weight:700;color:var(--green)">● ${camName}</div>
+          <div style="font-size:0.67rem;color:var(--text-muted);margin-top:2px">
+            Detections: ${inst.detections||0} &nbsp;|&nbsp; Alert: ${inst.alerts||0} &nbsp;|&nbsp; Key: <code style="color:var(--teal)">${inst.instance_key}</code>
+          </div>
+        </div>
+        <button class="btn btn-sm" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.35);
+          color:#f87171;font-size:0.72rem;padding:5px 12px;flex-shrink:0"
+          onclick="agentStop('${inst.instance_key}')">
+          ⏹ Stop
+        </button>
+      </div>`
+    }).join('')
+
+    runningBlock = `
+      <div class="detail-section">
+        <div class="detail-title" style="margin-bottom:8px">🟢 Instance Berjalan (${runningInstances.length})</div>
+        ${rows}
+      </div>`
+  }
+
+  // ── Camera picker to add new instance ──
+  const cams = _lastStatus?.cameras || []
+  // Filter cameras not yet used by this agent type on that camera
+  const usedCamIds = new Set(runningInstances.map(i => i.camera_id))
+  const availableCams = cams.filter(c => !usedCamIds.has(c.id))
+
+  let addBlock = ''
+  if (camNeeded) {
+    if (availableCams.length === 0 && cams.length > 0) {
+      addBlock = `<div style="color:var(--yellow);font-size:0.78rem;text-align:center;padding:10px">
+        ✅ This agent is already active on all available cameras
+      </div>`
+    } else {
+      const camOptions = (availableCams.length > 0 ? availableCams : cams).map(c =>
+        `<option value="${c.id}">${c.name}${c.connected?' ✅':' ⚠️'}</option>`
+      ).join('')
+      const pickerHtml = cams.length > 0
+        ? `<div style="margin-bottom:10px">
+            <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:5px">
+              Pilih camera target:
+            </div>
+            <select id="modal-cam-pick" style="width:100%;background:var(--bg4);border:1px solid var(--border);
+              color:var(--text);border-radius:7px;padding:6px 10px;font-size:0.78rem">
+              ${camOptions}
+            </select>
+          </div>`
+        : `<div style="color:var(--yellow);font-size:0.75rem;margin-bottom:10px">⚠ No cameras configured yet</div>`
+
+      addBlock = `
+        ${pickerHtml}
+        <button class="btn btn-teal btn-sm" style="width:100%;padding:10px;font-size:0.82rem;font-weight:700"
+          id="modal-start-btn" onclick="agentStart('${id}')">
+          ▶ ${hasAnyRunning ? 'Add to Another Camera' : 'Activate Agent'}
+        </button>`
+    }
+  } else {
+    // Sensor-only agent — no camera picker needed
+    const alreadyRunning = runningInstances.length > 0
+    addBlock = alreadyRunning
+      ? `<div style="color:var(--green);font-size:0.78rem;text-align:center">✅ Sensor agent is active</div>`
+      : `<button class="btn btn-teal btn-sm" style="width:100%;padding:10px;font-size:0.82rem;font-weight:700"
+           id="modal-start-btn" onclick="agentStart('${id}')">
+           ▶ Activate Sensor Agent
+         </button>`
+  }
+
+  document.getElementById('modal-icon').textContent  = def.icon
+  document.getElementById('modal-name').textContent  = def.name
+  document.getElementById('modal-seg').textContent   = def.segLabel
+  document.getElementById('modal-status').innerHTML  = statusHtml
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-title">Capabilities</div>
+      <div class="detail-caps">
+        ${(def.capabilities||[]).map(c=>`<div class="detail-cap">${c}</div>`).join('')}
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title">Hardware Requirements</div>
+      <div class="detail-requires" style="flex-direction:column;gap:8px">
+        <div>
+          <div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.8px">📹 Cameras</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${camSection}</div>
+        </div>
+        <div>
+          <div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.8px">📡 Sensors</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${senSection}</div>
+        </div>
+      </div>
+    </div>
+    ${runningBlock}
+    <div class="detail-section">
+      <div class="detail-title">Alert Condition</div>
+      <div class="detail-alert-box">⚠ ${def.alertOn||'-'}</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title">Configuration Parameters</div>
+      <div class="detail-config-box">${def.config||'-'}</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title">Best For</div>
+      <div class="detail-best">💡 ${def.bestFor||'-'}</div>
+    </div>
+    <div class="detail-section" style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+      <div class="detail-title" style="margin-bottom:10px">
+        ${hasAnyRunning ? '➕ Add Instance' : '▶ Activate Agent'}
+      </div>
+      ${addBlock}
+    </div>
+  `
+
+  document.getElementById('agentModal').classList.add('open')
+}
+
+function closeAgentModal() {
+  document.getElementById('agentModal').classList.remove('open')
+}
+
+// ── Start: add agent instance to selected camera ────────────────────
+async function agentStart(agentType) {
+  const btn = document.getElementById('modal-start-btn')
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ Memproses...' }
+
+  try {
+    const pick = document.getElementById('modal-cam-pick')
+    const body = { agent_id: agentType, camera_id: pick?.value || '' }
+
+    const r   = await fetch('/api/agents/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+    const res = await r.json()
+
+    if(res.ok) {
+      await _refreshStatus()
+      const camName = (_lastStatus?.cameras||[]).find(c => c.id === res.camera)?.name || res.camera
+      // Re-render modal with updated instances
+      openAgentModal(agentType)
+      renderAgents(currentSegFilter)
+      _showToast(`✅ ${agentType} aktif di ${camName}`)
+    } else {
+      _showToast(`❌ Failed: ${res.reason}`, 'error')
+      if(btn) { btn.disabled = false; btn.textContent = '▶ Activate Agent' }
+    }
+  } catch(e) {
+    _showToast(`❌ Error: ${e.message}`, 'error')
+    if(btn) { btn.disabled = false; btn.textContent = '▶ Activate Agent' }
+  }
+}
+
+// ── Stop: hentikan satu instance via instance_key ───────────────────────────
+async function agentStop(instanceKey) {
+  try {
+    const r   = await fetch('/api/agents/stop', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ instance_key: instanceKey }) })
+    const res = await r.json()
+
+    if(res.ok) {
+      await _refreshStatus()
+      // Ambil agent_type dari instance_key
+      const agentType = instanceKey.split('__')[0]
+      openAgentModal(agentType)
+      renderAgents(currentSegFilter)
+      _showToast(`⏹ Instance dihentikan`)
+    } else {
+      _showToast(`❌ Failed: ${res.reason}`, 'error')
+    }
+  } catch(e) {
+    _showToast(`❌ Error: ${e.message}`, 'error')
+  }
+}
+
+// ── Refresh status & sync activeAgents ─────────────────────────────────────
+async function _refreshStatus() {
+  const data = await api('/api/status')
+  if(data) {
+    _lastStatus  = data
+    activeAgents = {}
+    // Key by instance_key; juga by agent_type untuk backward compat
+    data.agents.forEach(a => {
+      activeAgents[a.instance_key || a.name] = a
+    })
+  }
+}
+
+// ── Legacy shim — agentAction still called in several places ───────────
+async function agentAction(action, agentId) {
+  if(action === 'start') return agentStart(agentId)
+  // stop: cari instance_key pertama
+  const inst = getRunningInstances(agentId)[0]
+  if(inst) return agentStop(inst.instance_key)
+}
+
+// ── Toast notification ─────────────────────────────────
+function _showToast(msg, type = 'ok') {
+  let t = document.getElementById('plutoclaw-toast')
+  if(!t) {
+    t = document.createElement('div')
+    t.id = 'plutoclaw-toast'
+    t.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+      padding:10px 20px;border-radius:9px;font-size:0.82rem;font-weight:600;
+      z-index:9999;transition:opacity .3s;pointer-events:none;white-space:nowrap`
+    document.body.appendChild(t)
+  }
+  t.textContent = msg
+  t.style.background = type === 'error' ? 'rgba(239,68,68,0.9)' : 'rgba(0,180,180,0.9)'
+  t.style.color = '#fff'
+  t.style.opacity = '1'
+  clearTimeout(t._timer)
+  t._timer = setTimeout(() => { t.style.opacity = '0' }, 3000)
+}
+
+// ── Pluto AI Command Interface ──────────────────────────────────────
+let _plutoHistory  = []
+let _plutoTyping   = false
+let _plutoOpen     = true
+let _plutoSession  = 'sess_' + Math.random().toString(36).slice(2, 8)
+
+function togglePlutoChat() {
+  const body = document.getElementById('plutoBody')
+  const icon = document.getElementById('plutoToggleIcon')
+  _plutoOpen = !_plutoOpen
+  body.style.display = _plutoOpen ? 'block' : 'none'
+  icon.classList.toggle('open', _plutoOpen)
+}
+
+function plutoSendChip(el) {
+  document.getElementById('plutoInput').value = el.textContent.trim()
+  plutoSend()
+}
+
+async function plutoSend() {
+  const input = document.getElementById('plutoInput')
+  const msg = input.value.trim()
+  if (!msg || _plutoTyping) return
+  input.value = ''
+  input.style.height = 'auto'
+
+  document.getElementById('plutoChips').style.display = 'none'
+  _appendPlutoMsg(msg, 'user')
+  _plutoHistory.push({role:'user', content:msg})
+
+  _plutoTyping = true
+  document.getElementById('plutoSendBtn').disabled = true
+  _appendTyping()
+
+  try {
+    const r = await fetch('/api/pluto/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message: msg })
+    })
+    const data  = await r.json()
+    const reply = data.reply || 'Sorry, no response received.'
+
+    _removeTyping()
+    _appendPlutoMsg(reply, 'pluto')
+    _plutoHistory.push({role:'assistant', content:reply})
+
+    // Tampilkan action result jika ada
+    if (data.action_result && data.action_result.msg) {
+      _appendActionResult(data.action_result)
+      setTimeout(() => _refreshStatus(), 800)
+    }
+
+    // Update dataset badge
+    _updateDatasetBadge()
+
+  } catch(e) {
+    _removeTyping()
+    _appendPlutoMsg('Sorry, could not reach Pluto. Make sure Ollama is running.', 'pluto')
+  }
+
+  _plutoTyping = false
+  document.getElementById('plutoSendBtn').disabled = false
+}
+
+function _appendPlutoMsg(text, role) {
+  const box  = document.getElementById('plutoMessages')
+  const icon = role === 'pluto' ? '🐾' : '👤'
+  const cls  = role === 'pluto' ? 'pluto' : 'user'
+  const html = text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code style="background:var(--bg3);padding:1px 4px;border-radius:3px;font-size:0.85em">$1</code>')
+    .replace(/\n/g, '<br>')
+  const div = document.createElement('div')
+  div.className = `msg-row ${role}`
+  div.innerHTML = `<div class="msg-avatar ${cls}">${icon}</div><div class="msg-bubble ${cls}">${html}</div>`
+  box.appendChild(div)
+  box.scrollTop = box.scrollHeight
+}
+
+function _appendActionResult(result) {
+  const box = document.getElementById('plutoMessages')
+  const ok  = result.ok !== false
+  const icon = ok ? '✅' : '❌'
+  const color = ok ? 'var(--green)' : 'var(--red, #e05)';
+
+  let detail = ''
+  if (result.msg)    detail = result.msg
+  else if (result.reason) detail = result.reason
+  else if (result.count !== undefined) detail = `${result.count} event ditemukan`
+
+  const div = document.createElement('div')
+  div.className = 'msg-row'
+  div.innerHTML = `
+    <div class="msg-avatar pluto" style="font-size:0.75rem;background:var(--bg3)">⚡</div>
+    <div class="msg-bubble pluto" style="border-left:3px solid ${color};padding-left:10px;font-size:0.8rem">
+      <span style="color:${color};font-weight:700">${icon} ${result.type || 'action'}</span>
+      ${detail ? `<br><span style="color:var(--text-dim)">${detail}</span>` : ''}
+    </div>`
+  box.appendChild(div)
+  box.scrollTop = box.scrollHeight
+}
+
+function _appendTyping() {
+  const box = document.getElementById('plutoMessages')
+  const div = document.createElement('div')
+  div.className = 'msg-row'
+  div.id = 'pluto-typing'
+  div.innerHTML = `<div class="msg-avatar pluto">🐾</div>
+    <div class="msg-bubble pluto msg-typing">
+      <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+    </div>`
+  box.appendChild(div)
+  box.scrollTop = box.scrollHeight
+}
+
+async function _updateDatasetBadge() {
+  try {
+    const r    = await fetch('/api/pluto/dataset/stats')
+    const data = await r.json()
+    const badge = document.getElementById('plutoDatasetBadge')
+    if (badge) badge.textContent = `dataset: ${data.total || 0}`
+  } catch(e) {}
+}
+
+// Load dataset count saat halaman pertama kali dibuka
+window.addEventListener('load', () => setTimeout(_updateDatasetBadge, 1500))
+
+// ── Actuator Control ───────────────────────────────────
+const ACTUATOR_ICONS = { relay:'🔌', buzzer:'🔔', led:'💡', servo:'⚙️', pwm:'🌀' }
+
+async function loadActuators() {
+  const grid = document.getElementById('actuatorGrid')
+  if(!grid) return
+  const data = await api('/api/actuators')
+  if(!data || !data.actuators) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem">No actuators registered</div>`
+    return
+  }
+  if(data.actuators.length === 0) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem">
+      No actuators yet. Add them in <code style="color:var(--teal)">config.yaml → actuators:</code></div>`
+    return
+  }
+  grid.innerHTML = data.actuators.map(a => _renderActuatorCard(a)).join('')
+}
+
+function _renderActuatorCard(a) {
+  const on    = a.state
+  const icon  = ACTUATOR_ICONS[a.type] || '⚡'
+  const label = on ? 'ON' : 'OFF'
+  return `
+  <div class="actuator-card ${on ? 'on' : 'off'}" id="act-card-${a.id}">
+    <div class="actuator-head">
+      <div class="actuator-icon ${on ? 'on' : ''}">${icon}</div>
+      <div>
+        <div class="actuator-name">${a.name}</div>
+        <div class="actuator-type">${a.type.toUpperCase()} · GPIO ${a.pin ?? '—'}</div>
+      </div>
+    </div>
+    <div class="actuator-body">
+      <div class="actuator-state ${on ? 'on' : 'off'}">${on ? '● ON' : '○ OFF'}</div>
+      <div class="actuator-btns">
+        <button class="act-btn on-btn"  onclick="actuatorCmd('${a.id}','on')">ON</button>
+        <button class="act-btn off-btn" onclick="actuatorCmd('${a.id}','off')">OFF</button>
+        <button class="act-btn"         onclick="actuatorCmd('${a.id}','pulse')">⚡ Pulse</button>
+      </div>
+      <div class="act-pin">GPIO ${a.pin ?? '—'}</div>
+    </div>
+  </div>`
+}
+
+async function actuatorCmd(id, cmd) {
+  let endpoint = `/api/actuators/${id}/${cmd}`
+  let body = cmd === 'pulse' ? { duration: 1.0 } : {}
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  }).then(r => r.json()).catch(() => null)
+
+  if(res && res.ok) {
+    // Update card tanpa reload penuh
+    const card = document.getElementById(`act-card-${id}`)
+    if(card) {
+      const newState = res.state ?? (cmd === 'on')
+      card.className = `actuator-card ${newState ? 'on' : 'off'}`
+      const stateEl = card.querySelector('.actuator-state')
+      const iconEl  = card.querySelector('.actuator-icon')
+      if(stateEl) { stateEl.textContent = newState ? '● ON' : '○ OFF'; stateEl.className = `actuator-state ${newState ? 'on' : 'off'}` }
+      if(iconEl)  { iconEl.className = `actuator-icon ${newState ? 'on' : ''}` }
+    }
+  } else {
+    alert(`Failed: ${res?.reason || 'error'}`)
+  }
+}
+
+// Auto-load actuators saat halaman sensors dibuka (hook ada di showPage)
+
+function _removeTyping() {
+  const el = document.getElementById('pluto-typing')
+  if(el) el.remove()
+}
+
+// ── Camera page ────────────────────────────────────────
+async function renderAllCameras() {
+  const data = await api('/api/status')
+  if(!data) return
+  const grid = document.getElementById('allCamGrid')
+  document.getElementById('totalCamLabel').textContent = `${data.cameras.length} camera`
+  if(data.cameras.length === 0) {
+    grid.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:0.8rem;text-align:center;grid-column:1/-1">Tidak ada camera. Tambah via config.yaml</div>'
+    return
+  }
+  grid.innerHTML = data.cameras.map(c => `
+    <div class="cam-item">
+      <div class="cam-title">
+        ${c.name}
+        ${c.connected ? '<span class="live-badge">LIVE</span>' : '<span style="font-size:0.65rem;color:var(--red)">OFFLINE</span>'}
+      </div>
+      <div class="cam-body" style="min-height:160px">
+        ${c.connected
+          ? `<img src="/stream/${c.id}">`
+          : `<div class="cam-offline">📵 ${c.error||'Not connected'}</div>`}
+      </div>
+      <div style="padding:8px 10px;font-size:0.68rem;color:var(--text-muted)">${c.source||''}</div>
+    </div>`).join('')
+}
+
+// ── Sensor Page ────────────────────────────────────────
+const SENSOR_ICONS = { DHT22:'🌡️', MQ135:'💨', SOIL:'💧', PIR:'🏃', DS18B20:'🌡️', 'HC-SR04':'📏', default:'📡' }
+const SENSOR_UNITS = { DHT22:'°C / %RH', MQ135:'ppm', SOIL:'%', PIR:'motion', DS18B20:'°C', 'HC-SR04':'cm', default:'' }
+
+async function loadSensors() {
+  const data = await api('/api/status')
+  if(!data) return
+
+  const cap = data.capacity || {}
+  const sensors = data.sensors || []
+  const env = data.environment || 'unknown'
+
+  // Update capacity card
+  const maxCam = cap.max_cameras || 1
+  const maxSen = cap.max_sensors || 0
+  const maxAge = cap.max_agents || 1
+  const camUsed = data.cameras.length
+  const senUsed = sensors.length
+  const ageUsed = data.agents.length
+
+  const el = (id) => document.getElementById(id)
+  const setBar = (barId,textId,used,max) => {
+    const pct = max > 0 ? Math.round((used/max)*100) : 0
+    if(el(barId)) el(barId).style.width = Math.min(pct,100) + '%'
+    if(el(textId)) el(textId).textContent = `${used} / ${max}`
+  }
+  setBar('cap2-cam','cap2-cam-text', camUsed, maxCam)
+  setBar('cap2-sen','cap2-sen-text', senUsed, maxSen)
+  setBar('cap2-age','cap2-age-text', ageUsed, maxAge)
+  if(el('sensorDeviceType')) el('sensorDeviceType').textContent = cap.device_type || env.toUpperCase()
+  if(el('sensorDeviceNote')) el('sensorDeviceNote').textContent = cap.notes || ''
+
+  // Supported sensor type pills
+  const typesEl = el('supportedSensorTypes')
+  if(typesEl) {
+    const types = cap.sensor_types || []
+    if(types.length === 0) {
+      typesEl.innerHTML = '<span style="color:var(--red);font-size:0.75rem">⚠ No GPIO sensor support on this platform</span>'
+    } else {
+      typesEl.innerHTML = types.map(t =>
+        `<span style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:3px 10px;font-size:0.72rem;color:var(--teal)">${SENSOR_ICONS[t]||'📡'} ${t}</span>`
+      ).join('')
+    }
+  }
+
+  // Render sensor cards
+  const grid = el('sensorGrid')
+  if(!grid) return
+
+  if(sensors.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:50px 20px">
+        <div style="font-size:2.5rem;margin-bottom:12px">📡</div>
+        <div style="font-size:0.9rem;color:var(--text-dim);margin-bottom:8px">No sensors configured yet</div>
+        <div style="font-size:0.75rem;color:var(--text-muted)">Add sensors in <code style="color:var(--teal)">config.yaml → sensors:</code></div>
+        <div style="margin-top:16px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:left;display:inline-block;font-size:0.73rem;font-family:monospace;color:var(--text-dim)">
+          sensors:<br>
+          &nbsp;&nbsp;- id: temp1<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;type: DHT22<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;pin: 4<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;name: "Pen Temperature"
+        </div>
+      </div>`
+    return
+  }
+
+  grid.innerHTML = sensors.map(s => {
+    const icon = SENSOR_ICONS[s.type] || SENSOR_ICONS.default
+    const reading = s.reading || {}
+    const isOk = reading.status === 'ok'
+    const noGPIO = reading.status === 'gpio_unavailable'
+
+    let readingHtml = ''
+    if(isOk) {
+      if(s.type === 'DHT22') {
+        readingHtml = `
+          <div class="sensor-reading">${reading.temperature}°C</div>
+          <div class="sensor-unit">Kelembaban: ${reading.humidity}%RH</div>`
+      } else {
+        readingHtml = `<div class="sensor-reading">${reading.value}</div><div class="sensor-unit">${reading.unit}</div>`
+      }
+    } else if(noGPIO) {
+      readingHtml = `<div class="sensor-reading na">N/A</div><div class="sensor-unit" style="color:var(--text-muted)">GPIO not available (Mac mode)</div>`
+    } else {
+      readingHtml = `<div class="sensor-reading na">—</div><div class="sensor-unit" style="color:var(--text-muted)">${reading.status||'no data'}</div>`
+    }
+
+    const enabled = s.enabled !== false
+    return `
+    <div class="sensor-card ${isOk?'active':''} ${!enabled?'inactive':''}">
+      <div class="sensor-head">
+        <div class="sensor-icon">${icon}</div>
+        <div>
+          <div class="sensor-name">${s.name}</div>
+          <div class="sensor-type">${s.type} ${s.pin ? '· GPIO '+s.pin : ''}</div>
+        </div>
+        <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span class="${isOk?'live-badge':''}; font-size:0.6rem;padding:2px 7px;border-radius:10px;background:${isOk?'rgba(0,230,118,0.15)':noGPIO?'var(--bg4)':'rgba(255,77,77,0.15)'};color:${isOk?'var(--green)':noGPIO?'var(--text-muted)':'var(--red)'};font-weight:600">${isOk?'LIVE':noGPIO?'N/A':'OFFLINE'}</span>
+          ${s.pin ? `<span class="sensor-pin">GPIO ${s.pin}</span>` : ''}
+        </div>
+      </div>
+      <div class="sensor-body">
+        ${readingHtml}
+        <div class="sensor-meta">
+          <span>ID: ${s.id}</span>
+          <span>Type: ${s.type}</span>
+          <span style="margin-left:auto;color:${enabled?'var(--teal)':'var(--red)'}">${enabled?'✓ Aktif':'✗ Nonaktif'}</span>
+        </div>
+      </div>
+    </div>`
+  }).join('')
+}
+
+// ── WA Page ────────────────────────────────────────────
+// Semua agent untuk dropdown assign
+const ALL_AGENT_OPTIONS = [
+  { value:'all',           label:'🔔 All Agents' },
+  { value:'ppe_guard',     label:'⛑️ PPE Guard' },
+  { value:'intrusion',     label:'🚨 Intrusion Alert' },
+  { value:'fire_smoke',    label:'🔥 Fire & Smoke' },
+  { value:'forklift_guard',label:'🚜 Forklift Guard' },
+  { value:'dock_monitor',  label:'🚢 Dock Monitor' },
+  { value:'sick_chicken',  label:'🐔 Sick Chicken' },
+  { value:'chicken_count', label:'🐣 Chicken Count' },
+  { value:'feed_monitor',  label:'🌾 Feed Monitor' },
+  { value:'estrus_detect', label:'🐄 Estrus Detect' },
+  { value:'birth_monitor', label:'🍼 Birth Monitor' },
+  { value:'health_monitor',label:'💊 Health Monitor' },
+  { value:'goat_health',   label:'🐐 Goat Health' },
+  { value:'goat_count',    label:'🐏 Goat Count' },
+  { value:'disease_leaf',  label:'🌿 Disease Leaf' },
+  { value:'pest_detect',   label:'🐛 Pest Detect' },
+  { value:'growth_monitor',label:'🌱 Growth Monitor' },
+  { value:'fruit_disease', label:'🍎 Fruit Disease' },
+  { value:'harvest_ready', label:'🍅 Harvest Ready' },
+  { value:'rice_disease',  label:'🌾 Rice Disease' },
+  { value:'water_monitor', label:'💧 Water Monitor' },
+  { value:'temp_alert',    label:'🌡️ Temp Alert' },
+  { value:'cs_intrusion',  label:'❄️ CS Intrusion' },
+  { value:'coop_monitor',  label:'🏠 Coop Monitor' },
+]
+
+async function renderWAPage() {
+  // Load config dari backend saat pertama kali
+  const cfg = await api('/api/wa/config')
+  if(cfg?.ok) {
+    state.waNumbers = cfg.numbers || []
+    state.waEnabled = cfg.enabled || false
+  }
+
+  // Update toggle enabled
+  const tog = document.getElementById('waEnabledToggle')
+  if(tog) tog.checked = state.waEnabled
+
+  _renderWAList()
+}
+
+function _renderWAList() {
+  const list = document.getElementById('waNumberList')
+  if(!list) return
+
+  if(state.waNumbers.length === 0) {
+    list.innerHTML = `<div style="color:var(--text-muted);font-size:0.78rem;text-align:center;padding:16px 0">
+      No recipients added yet. Click "+ Add Number" to add one.
+    </div>`
+    return
+  }
+
+  const agentOpts = ALL_AGENT_OPTIONS.map(o =>
+    `<option value="${o.value}">${o.label}</option>`
+  ).join('')
+
+  list.innerHTML = state.waNumbers.map((n,i) => `
+    <div class="wa-number-item" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:7px;align-items:center;
+      background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 10px;margin-bottom:7px">
+      <div>
+        <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:3px">WA NUMBER</div>
+        <input value="${n.number}" placeholder="628xxxxxxxxxx"
+          style="width:100%;background:var(--bg4);border:1px solid var(--border);color:var(--text);
+            border-radius:6px;padding:5px 8px;font-size:0.78rem"
+          oninput="state.waNumbers[${i}].number=this.value">
+      </div>
+      <div>
+        <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:3px">LABEL (optional)</div>
+        <input value="${n.label||''}" placeholder="e.g. Mr. Budi / Security"
+          style="width:100%;background:var(--bg4);border:1px solid var(--border);color:var(--text);
+            border-radius:6px;padding:5px 8px;font-size:0.78rem"
+          oninput="state.waNumbers[${i}].label=this.value">
+      </div>
+      <div>
+        <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:3px">RECEIVE ALERTS FROM</div>
+        <select style="background:var(--bg4);border:1px solid var(--border);color:var(--text);
+          border-radius:6px;padding:5px 8px;font-size:0.75rem"
+          onchange="state.waNumbers[${i}].agents=[this.value]">
+          ${ALL_AGENT_OPTIONS.map(o =>
+            `<option value="${o.value}" ${(n.agents||['all']).includes(o.value)?'selected':''}>${o.label}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;padding-top:16px">
+        <button class="btn btn-sm" title="Send WA test"
+          style="background:rgba(0,180,180,0.1);border:1px solid rgba(0,180,180,0.3);color:var(--teal);padding:4px 10px;font-size:0.7rem"
+          onclick="testWASend(${i})">📤 Test</button>
+        <button class="btn btn-sm" title="Delete number"
+          style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;padding:4px 10px;font-size:0.7rem"
+          onclick="removeWANumber(${i})">✕ Hapus</button>
+      </div>
+    </div>`).join('')
+}
+
+function addWANumber() {
+  state.waNumbers.push({ number:'', label:'', agents:['all'] })
+  _renderWAList()
+}
+
+function removeWANumber(i) {
+  state.waNumbers.splice(i, 1)
+  _renderWAList()
+}
+
+async function saveWAConfig() {
+  const btn = document.getElementById('waSaveBtn')
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ Menyimpan...' }
+
+  const tog = document.getElementById('waEnabledToggle')
+  const enabled = tog ? tog.checked : state.waEnabled
+
+  // Filter nomor kosong
+  const numbers = state.waNumbers.filter(n => n.number.trim())
+
+  const res = await api('/api/wa/config', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ enabled, numbers })
+  })
+
+  if(btn) { btn.disabled = false; btn.textContent = '💾 Save Settings' }
+
+  if(res?.ok) {
+    state.waEnabled = enabled
+    _showToast(`✅ Saved — ${res.saved} active recipients`)
+  } else {
+    _showToast(`❌ Failed to save: ${res?.reason||'unknown'}`, 'error')
+  }
+}
+
+async function testWASend(i) {
+  const n = state.waNumbers[i]
+  if(!n?.number?.trim()) {
+    _showToast('❌ Enter a number before testing', 'error'); return
+  }
+
+  _showToast(`📤 Mengirim test ke ${n.number}...`)
+  const res = await api('/api/wa/test', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ number: n.number })
+  })
+
+  if(res?.ok) {
+    _showToast(`✅ WA test successfully sent to ${n.label||n.number}!`)
+  } else {
+    _showToast(`❌ Test failed: ${res?.reason||'WA Bridge offline'}`, 'error')
+  }
+}
+
+function connectWA() {
+  document.getElementById('waQrBox').innerHTML = `
+    <div style="text-align:center;color:var(--teal);font-size:0.78rem;padding:10px">
+      <div style="font-size:2rem;margin-bottom:8px">⏳</div>
+      <div style="font-weight:600;margin-bottom:6px">Starting WA Bridge...</div>
+      <div style="background:var(--bg4);border:1px solid var(--border);border-radius:7px;padding:10px;
+        font-family:monospace;font-size:0.72rem;color:var(--text-dim);text-align:left;margin-top:8px">
+        cd /path/to/plutoclaw/wa_bridge<br>node server.js
+      </div>
+      <div style="color:var(--text-muted);font-size:0.7rem;margin-top:8px">
+        Setelah QR muncul di terminal, scan dengan WhatsApp → Perangkat Tertaut
+      </div>
+    </div>`
+
+  // Poll status bridge tiap 3 detik max 20x
+  let tries = 0
+  const poll = setInterval(async () => {
+    tries++
+    const s = await api('/api/wa/status')
+    if(s?.connected) {
+      clearInterval(poll)
+      document.getElementById('waDot').style.background = 'var(--green)'
+      document.getElementById('waStatusText').textContent = '✅ WhatsApp connected'
+      document.getElementById('waQrBox').innerHTML = `
+        <div style="text-align:center;color:var(--green);padding:20px">
+          <div style="font-size:2.5rem">✅</div>
+          <div style="font-weight:700;margin-top:8px">WhatsApp Connected!</div>
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">
+            Alerts ready to send to recipients
+          </div>
+        </div>`
+      _showToast('✅ WhatsApp connected successfully!')
+    } else if(tries >= 20) {
+      clearInterval(poll)
+      _showToast('⚠️ WA Bridge not detected. Make sure node server.js is running.', 'error')
+    }
+  }, 3000)
+}
+
+// ── Doctor / Setup ─────────────────────────────────────
+const doctorChecks = [
+  { id:'platform', icon:'💻', label:'Platform', detail:'Detect Mac/Raspberry Pi' },
+  { id:'python', icon:'🐍', label:'Python 3.10+', detail:'Runtime utama PlutoClaw' },
+  { id:'ollama', icon:'🤖', label:'Ollama & Model', detail:'plutoedge & moondream' },
+  { id:'yolo', icon:'👁️', label:'YOLOv8 Model', detail:'yolov8n.pt untuk computer vision' },
+  { id:'cameras', icon:'📹', label:'Kamera', detail:'USB / RTSP IP Camera' },
+  { id:'wa_bridge', icon:'💬', label:'WA Bridge', detail:'Node.js Baileys WhatsApp' },
+  { id:'storage', icon:'💾', label:'Database', detail:'SQLite event log' },
+  { id:'gpio', icon:'📡', label:'GPIO Sensor', detail:'DHT22, MQ135 (Pi only)' },
+  { id:'hailo', icon:'⚡', label:'Hailo NPU', detail:'AI HAT+ accelerator (Pi only)' },
+  { id:'network', icon:'🌐', label:'Jaringan', detail:'WiFi / LAN / 4G modem' },
+]
+
+function renderDoctor() {
+  const grid = document.getElementById('doctorGrid')
+  grid.innerHTML = doctorChecks.map(c => `
+    <div class="doctor-item" id="dc-${c.id}">
+      <div class="doctor-ic scan">⟳</div>
+      <div style="flex:1">
+        <div class="doctor-label">${c.icon} ${c.label}</div>
+        <div class="doctor-detail">${c.detail}</div>
+      </div>
+      <div class="doctor-status scan" id="ds-${c.id}">?</div>
+    </div>`).join('')
+}
+
+async function runDoctor() {
+  const log = document.getElementById('doctorLog')
+  log.innerHTML = ''
+  addLog('doctorLog', '═══ PlutoClaw Doctor v2 ═══', 'info')
+  addLog('doctorLog', 'Menghubungi backend scanner...', 'dim')
+
+  // Reset semua card ke scanning state
+  doctorChecks.forEach(c => {
+    const dc = document.getElementById(`dc-${c.id}`)
+    const ds = document.getElementById(`ds-${c.id}`)
+    if(dc) { dc.querySelector('.doctor-ic').className='doctor-ic scan'; dc.querySelector('.doctor-ic').textContent='⟳' }
+    if(ds) { ds.className='doctor-status scan'; ds.textContent='...' }
+  })
+
+  const scan = await api('/api/setup/scan')
+  if(!scan) {
+    addLog('doctorLog', '❌ Failed to reach /api/setup/scan', 'error')
+    return
+  }
+
+  let failCount = 0
+  let warnCount = 0
+  for(const chk of doctorChecks) {
+    await new Promise(r => setTimeout(r, 180))
+    const res = scan[chk.id] || { ok: true, severity: 'ok', value: 'OK', detail: '' }
+
+    // Gunakan severity dari backend jika ada, fallback ke logika lama
+    let icClass
+    if(res.severity) {
+      icClass = res.severity  // "ok" | "warn" | "fail"
+    } else {
+      icClass = res.ok ? 'ok' : (chk.id === 'gpio' || chk.id === 'hailo' ? 'warn' : 'fail')
+    }
+
+    const statusText = res.value || (res.ok ? 'OK' : 'FAIL')
+    const logType    = icClass === 'ok' ? 'ok' : icClass === 'warn' ? 'warn' : 'error'
+    const icon       = icClass === 'ok' ? '✅' : icClass === 'warn' ? '⚠️' : '❌'
+
+    addLog('doctorLog',
+      `${icon} ${chk.label}: ${statusText}${res.detail ? ' — ' + res.detail : ''}`,
+      logType
+    )
+
+    if(icClass === 'fail') failCount++
+    if(icClass === 'warn') warnCount++
+
+    const dc = document.getElementById(`dc-${chk.id}`)
+    const ds = document.getElementById(`ds-${chk.id}`)
+    if(dc) {
+      dc.querySelector('.doctor-ic').className  = `doctor-ic ${icClass}`
+      dc.querySelector('.doctor-ic').textContent = icClass==='ok' ? '✓' : icClass==='warn' ? '⚠' : '✗'
+      // Tambahkan detail sebagai tooltip di doctor card
+      const detailEl = dc.querySelector('.doctor-detail')
+      if(detailEl && res.detail) detailEl.textContent = res.detail
+    }
+    if(ds) { ds.className = `doctor-status ${icClass}`; ds.textContent = statusText }
+  }
+
+  addLog('doctorLog', '', 'dim')
+
+  const badge = document.getElementById('doctorBadge')
+  if(failCount > 0) {
+    addLog('doctorLog', `❌ ${failCount} CRITICAL component(s) have issues — PlutoClaw may not run normally`, 'error')
+    if(warnCount > 0)
+      addLog('doctorLog', `⚠️ ${warnCount} komponen warning — fitur terbatas tapi sistem tetap jalan`, 'warn')
+    badge.style.display = 'inline'
+    badge.style.background = 'var(--red)'
+    badge.textContent = failCount
+  } else if(warnCount > 0) {
+    addLog('doctorLog', `✅ No critical components failed`, 'ok')
+    addLog('doctorLog', `⚠️ ${warnCount} komponen warning — beberapa fitur terbatas (lihat detail di atas)`, 'warn')
+    badge.style.display = 'inline'
+    badge.style.background = 'var(--yellow, #f59e0b)'
+    badge.style.color = '#1a1a2e'
+    badge.textContent = warnCount
+  } else {
+    addLog('doctorLog', '✅ All systems OK — PlutoClaw is ready to run!', 'ok')
+    badge.style.display = 'none'
+  }
+
+  addLog('doctorLog', '═══ Doctor selesai ═══', 'info')
+}
+
+// ── Log helpers ────────────────────────────────────────
+function addLog(boxId, text, type='dim') {
+  const box = document.getElementById(boxId)
+  if(!box) return
+  if(box.querySelector('.log-dim')?.textContent?.includes('Not yet')) box.innerHTML = ''
+  const el = document.createElement('div')
+  el.className = `log-${type}`
+  const ts = new Date().toLocaleTimeString('id-ID')
+  el.textContent = `[${ts}] ${text}`
+  box.appendChild(el)
+  box.scrollTop = box.scrollHeight
+}
+
+// ── Isi dropdown filter agent dari agent yang sedang running ─────────────
+function updateLogAgentFilter() {
+  const sel = document.getElementById('logAgent')
+  if(!sel) return
+
+  // Kumpulkan agent_type unik dari activeAgents
+  const runningTypes = [...new Set(
+    Object.values(activeAgents).map(a => a.agent_type).filter(Boolean)
+  )]
+
+  // Remove old agent optgroup if present
+  const existing = sel.querySelector('optgroup[label="── Agent Aktif ──"]')
+  if(existing) existing.remove()
+
+  if(runningTypes.length === 0) return
+
+  // Cari nama display dari AGENT_DEFS
+  const nameMap = {}
+  for(const arr of Object.values(AGENT_DEFS)) {
+    for(const d of arr) nameMap[d.id] = `${d.icon} ${d.name}`
+  }
+
+  const grp = document.createElement('optgroup')
+  grp.label = '── Agent Aktif ──'
+  runningTypes.forEach(type => {
+    const opt = document.createElement('option')
+    opt.value = type
+    opt.textContent = nameMap[type] || type
+    grp.appendChild(opt)
+  })
+
+  // Sisipkan sebelum optgroup Sistem
+  const sistemGrp = sel.querySelector('optgroup[label="── Sistem ──"]')
+  sel.insertBefore(grp, sistemGrp)
+}
+
+let _logAutoTimer = null
+function toggleLogAutoRefresh(on) {
+  clearInterval(_logAutoTimer)
+  if(on) _logAutoTimer = setInterval(loadLogs, 3000)
+}
+
+async function loadLogs() {
+  const box     = document.getElementById('sysLog')
+  const stats   = document.getElementById('logStats')
+  const level   = document.getElementById('logLevel')?.value  || ''
+  const agent   = document.getElementById('logAgent')?.value  || ''
+  const search  = document.getElementById('logSearch')?.value || ''
+  const wasAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20
+
+  // Build query string
+  const params = new URLSearchParams({ lines: 500 })
+  if(level)  params.set('level',  level)
+  if(agent)  params.set('agent',  agent)
+  if(search) params.set('search', search)
+
+  try {
+    const r = await fetch(`/api/logs?${params}`)
+    if(!r.ok) throw new Error(r.statusText)
+    const data = await r.json()
+    const lines = data.lines || []
+
+    if(stats) stats.textContent = `${lines.length} dari ${data.total} baris`
+
+    if(lines.length === 0) {
+      box.innerHTML = `<div class="log-dim" style="text-align:center;padding:20px">
+        ${search || level || agent ? '🔍 No results match the filter' : 'Log is empty'}
+      </div>`
+      return
+    }
+
+    // Highlight search term jika ada
+    const hl = search ? new RegExp(`(${search.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi') : null
+
+    box.innerHTML = lines.map(({text, level: lv}) => {
+      const cls = lv === 'ERROR'   ? 'log-error'
+                : lv === 'WARNING' ? 'log-warn'
+                : lv === 'INFO'    ? 'log-info'
+                : 'log-dim'
+      let safe = text.replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      if(hl) safe = safe.replace(hl, `<mark style="background:rgba(251,191,36,0.35);border-radius:2px">$1</mark>`)
+      return `<div class="${cls}" style="font-size:0.72rem;padding:1px 0">${safe}</div>`
+    }).join('')
+
+    if(wasAtBottom) box.scrollTop = box.scrollHeight
+  } catch(e) {
+    box.innerHTML = `<div class="log-error">Failed to load log: ${e.message}</div>`
+  }
+}
+
+async function clearLogs() {
+  if(!confirm('Clear log contents? Old log file is not deleted, only emptied.')) return
+  const r = await fetch('/api/logs', { method: 'DELETE' })
+  const res = await r.json()
+  if(res.ok) {
+    _showToast('🗑 Log cleared successfully')
+    loadLogs()
+  } else {
+    _showToast(`❌ Failed: ${res.reason}`, 'error')
+  }
+}
+
+// ── Auto refresh ───────────────────────────────────────
+refreshDashboard()
+refreshAlerts()
+setInterval(() => {
+  if(state.currentPage === 'dashboard') { refreshDashboard(); refreshAlerts() }
+}, 4000)
+</script>
+
+<!-- ══ Agent Detail Modal ══════════════════════════════ -->
+<div class="agent-modal-overlay" id="agentModal" onclick="if(event.target===this)closeAgentModal()">
+  <div class="agent-modal-box">
+    <div class="agent-modal-head">
+      <div class="agent-modal-icon" id="modal-icon">⛑️</div>
+      <div class="agent-modal-title">
+        <div class="agent-modal-name" id="modal-name">Agent</div>
+        <div class="agent-modal-seg" id="modal-seg">Segment</div>
+      </div>
+      <div id="modal-status"></div>
+      <button class="agent-modal-close" onclick="closeAgentModal()">✕</button>
+    </div>
+    <div class="agent-modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,71 @@
+# ── Runtime data ────────────────────────────────────────────────────────────
+data/*.db
+data/*.log
+data/*.log.*
+data/*.jsonl
+media/clips/
+media/snapshots/
+models/*.pt
+models/*.onnx
+models/*.gguf
+
+# Keep model directory structure
+!models/.gitkeep
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+env/
+.venv/
+.env
+
+# ── YOLOv8 / ML model weights ────────────────────────────────────────────────
+*.pt
+*.onnx
+*.tflite
+*.engine
+
+# ── Node (dashboard tooling) ─────────────────────────────────────────────────
+node_modules/
+package-lock.json
+.npm/
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ── Secrets / personal config ────────────────────────────────────────────────
+config.local.yaml
+.env
+.env.*
+
+# ── WhatsApp bridge — session tokens are private credentials ─────────────────
+wa_bridge/auth/
+wa_bridge/node_modules/
+
+# ── Internal docs (not for public repo) ─────────────────────────────────────
+*.docx
+temuan_model_llm.md
+generate_doc.js
+
+# ── Local dev tooling ─────────────────────────────────────────────────────────
+.claude/
+package.json
+package-lock.json
