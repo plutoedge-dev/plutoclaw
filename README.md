@@ -27,7 +27,7 @@
 
 PlutoClaw puts an **AI brain on your Raspberry Pi**. It monitors the physical world through sensors and cameras, reasons with a local LLM, and acts autonomously — controlling relays, sending WhatsApp alerts, and adapting to conditions — all **without internet or cloud**.
 
-It ships with **PlutoEdge-1.5B**, a domain-specific LLM fine-tuned for IoT edge automation, running via Ollama at ~37s inference on Pi 4B CPU.
+It ships with **PlutoEdge-1.5B**, a domain-specific LLM fine-tuned for IoT edge automation, running via Ollama at ~37s inference on Raspberry Pi CPU.
 
 > Think of it as an always-on AI operator for your facility: it watches, thinks, and acts — even at 2am, even with no internet.
 
@@ -151,16 +151,22 @@ pip install -r requirements.txt
 
 ### 2. Install the PlutoEdge AI model
 
+**Option A — Pull directly from HuggingFace (recommended):**
+```bash
+ollama pull hf.co/plutoedge/PlutoEdge-1.5B
+```
+
+**Option B — Build from this repo:**
 ```bash
 # Pull base model first
 ollama pull qwen2.5:1.5b
 
 # Register PlutoEdge-1.5B (domain-tuned for PlutoClaw)
-cd models/PlutoEdge-1.5B-v3
+cd models/PlutoEdge-1.5B-v4
 ollama create plutoedge -f Modelfile
 ```
 
-> **No GPU needed.** PlutoEdge-1.5B runs on Pi 4B CPU in ~37s. For faster inference, use Pi 5 (~18s) or add a Hailo-8 NPU.
+> **No GPU needed.** PlutoEdge-1.5B runs on Raspberry Pi CPU in ~37s. Add a Hailo-8 NPU for faster inference.
 
 ### 3. Configure
 
@@ -214,8 +220,7 @@ PlutoClaw uses **PlutoEdge-1.5B** — a fine-tuned version of Qwen2.5-1.5B-Instr
 | Fine-tuning | MLX LoRA (rank=16, 1200 iters) |
 | Format | GGUF Q4_K_M |
 | Size | 940 MB |
-| Pi 4B inference | ~37s |
-| Pi 5 inference | ~18s |
+| Raspberry Pi inference | ~37s (CPU) |
 | Context window | 1024 tokens (Pi) / 2048 tokens (Mac) |
 
 ### Prompt Architecture
@@ -415,7 +420,7 @@ whatsapp:
 | Problem | Fix |
 |---|---|
 | Sensor reads null | Check GPIO wiring; DHT22 needs 10kΩ pull-up resistor on data pin |
-| Slow LLM response | Normal on Pi 4B CPU (30–90s). Upgrade to Pi 5 for ~2× speed |
+| Slow LLM response | Normal on Raspberry Pi CPU (30–90s). Add Hailo-8 NPU for faster inference |
 | Camera not found | Check `lsusb`; try `source: 0`, `1`, `2` in config; add user to `video` group |
 | Ollama not running | Run `ollama serve` or `sudo systemctl start ollama` |
 | Port 8080 in use | Kill existing process: `fuser -k 8080/tcp` |
